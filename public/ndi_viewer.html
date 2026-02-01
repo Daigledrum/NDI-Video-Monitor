@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <title>NDI Viewer</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #1a1a1a;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      color: #fff;
+      overflow: hidden;
+    }
+    
+    #video-container {
+      position: relative;
+      width: 100%;
+      max-width: 100vw;
+      max-height: 90vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+    
+    #video {
+      width: auto;
+      height: auto;
+      max-width: 100%;
+      max-height: 90vh;
+      border: 2px solid #333;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+    }
+    
+    #status {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      background: rgba(0,0,0,0.8);
+      padding: 10px 20px;
+      border-radius: 5px;
+      font-size: 14px;
+      z-index: 10;
+    }
+    
+    #controls {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      background: rgba(0,0,0,0.8);
+      padding: 15px;
+      border-radius: 5px;
+      z-index: 10;
+    }
+    
+    #controls label {
+      display: block;
+      margin-bottom: 5px;
+      font-size: 12px;
+      color: #aaa;
+    }
+    
+    #controls select {
+      width: 250px;
+      padding: 8px;
+      background: #333;
+      color: #fff;
+      border: 1px solid #555;
+      border-radius: 3px;
+      font-size: 14px;
+      cursor: pointer;
+    }
+    
+    #controls select:hover {
+      border-color: #777;
+    }
+    
+    #controls select:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    
+    #refresh-btn {
+      margin-top: 8px;
+      padding: 6px 12px;
+      background: #0066cc;
+      color: #fff;
+      border: none;
+      border-radius: 3px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    
+    #refresh-btn:hover {
+      background: #0052a3;
+    }
+    
+    .status-dot {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      margin-right: 8px;
+      animation: pulse 2s infinite;
+    }
+    
+    .connected { background: #0f0; }
+    .disconnected { background: #f00; animation: none; }
+    
+    @keyframes pulse {
+      0%, 1controls">
+    <label for="source-select">NDI Source:</label>
+    <select id="source-select" disabled>
+      <option value="">Loading sources...</option>
+    </select>
+    <button id="refresh-btn">Refresh Sources</button>
+  </div>
+  
+  <div id="00% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+    
+    #stats {
+      position: absolute;
+      bottom: 20px;
+      right: 20px;
+      background: rgba(0,0,0,0.8);
+      padding: 10px 15px;
+      border-radius: 5px;
+      font-size: 12px;
+      font-family: monospace;
+      z-index: 10;
+    }
+    
+    .loading {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 18px;
+      color: #888;
+    }
+  </style>
+</head>
+<body>
+  <div id="status">
+    <span class="status-dot disconnected"></span>
+    <span id="status-text">Connecting...</span>
+  </div>
+  
+  <div id="video-container">
+    <img id="video" alt="NDI Stream">
+    <div class="loading">Waiting for stream...</div>
+  </div>
+  
+  <div id="stats">
+    const sourceSelect = document.getElementById('source-select');
+    
+    let ws = null;
+    let frameCount = 0;
+    let lastFrameTime = Date.now();
+    let fpsInterval = null;
+    let currentSource = 'default';
+    
+    function getWebSocketURL(source) {
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      
+      if (source === 'default') {
+        const host = window.location.host || 'localhost:3000';
+        return `${protocol}//${host}`;
+      } else if (source.startsWith('port:')) {
+        const port = source.split(':')[1];
+        const hostname = window.location.hostname || 'localhost';
+        return `${protocol}//${hostname}:${port}`;
+      } else if (source === 'custom') {
+        const url = prompt('Enter WebSocket URL (e.g., ws://localhost:3000):', 'ws://localhost:3000');
+        return url || getWebSocketURL('default');
+      }
+      return source;
+    }
+    
+    function connect(source = 'default') {
+      currentSource = source;
+      const wsUrl = getWebSocketURL(source)mentById('latency');
+    const loading = document.querySelector('.loading');
+    
+    let ws = null;
+    let frameCount = 0;
+    let lastFrameTime = Date.now();
+    let fpsInterval = null;
+    
+    function connect() {
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const host = window.location.host || 'localhost:3000';
+      const wsUrl = `${protocol}//${host}`;
+      
+      console.log('[WS] Connecting to:', wsUrl);
+      ws = new WebSocket(wsUrl);
+      ws.binaryType = 'blob';
+      
+      ws.onopen = () => {
+        console.log('[WS] Connected');
+        statusDot.className = 'status-dot connected';
+        statusText.textContent = 'Connected';
+        loading.style.display = 'none';
+        
+        // Start FPS counter
+        fpsInterval = setInterval(() => {
+          fpsDisplay.textContent = frameCount.toFixed(1);
+          frameCount = 0;
+        }, 1000);
+      };
+      
+      ws.onmessage = (event) => {
+        const now = Date.now();
+        const latency = now - lastFrameTime;
+        
+        // Handle both binary JPEG and base64 data URL formats
+        if (typeof event.data === 'string') {
+          // Base64 data URL (from test server)
+          video.src = event.data;
+        } else {
+          // Binary blob (from Max/MSP server)
+          const url = URL.createObjectURL(event.data);
+          const oldSrc = video.src;
+          video.src = url;
+          // Clean () => connect(currentSource), 2000);
+      };
+    }
+    
+    // Handle source selection
+    sourceSelect.addEventListener('change', (e) => {
+      const newSource = e.target.value;
+      console.log('[SOURCE] Switching to:', newSource);
+      
+      // Close existing connection
+      if (ws) {
+        ws.onclose = null; // Prevent auto-reconnect
+        ws.close();
+      }
+      
+      // Connect to new source
+      setTimeout(() => connect(newSource), 100);
+    });       setTimeout(() => URL.revokeObjectURL(oldSrc), 100);
+          }
+        }
+        
+        // Update stats
+        frameCount++;
+        latencyDisplay.textContent = latency.toFixed(0);
+        lastFrameTime = now;
+      };
+      
+      ws.onerror = (error) => {
+        console.error('[WS] Error:', error);
+        statusText.textContent = 'Error';
+      };
+      
+      ws.onclose = () => {
+        console.log('[WS] Disconnected');
+        statusDot.className = 'status-dot disconnected';
+        statusText.textContent = 'Disconnected';
+        loading.style.display = 'block';
+        
+        if (fpsInterval) {
+          clearInterval(fpsInterval);
+          fpsInterval = null;
+        }
+        
+        // Reconnect after 2 seconds
+        setTimeout(connect, 2000);
+      };
+    }
+    
+    // Start connection
+    connect();
+    
+    // Handle visibility changes (pause when tab is hidden)
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) {
+        console.log('[PAGE] Hidden, maintaining connection');
+      } else {
+        console.log('[PAGE] Visible');
+      }
+    });
+  </script>
+</body>
+</html>

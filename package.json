@@ -1,0 +1,14 @@
+{
+  "name": "maxmsp-ipad-stream",
+  "version": "2.0.0",
+  "description": "Real-time Max/MSP video → iPad via FFmpeg + WebSocket (no Jimp)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "canvas": "^3.2.1",
+    "express": "^4.18.2",
+    "ws": "^8.14.2"
+  }
+}

@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>NDI Video Stream</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #000;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      font-family: monospace;
+      color: #0f0;
+    }
+    
+    #container {
+      position: relative;
+      width: 100%;
+      max-width: 1920px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    
+    #status {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background: rgba(0,0,0,0.8);
+      padding: 8px 16px;
+      border-radius: 4px;
+      font-size: 14px;
+      z-index: 10;
+    }
+    
+    #controls {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      background: rgba(0,0,0,0.9);
+      padding: 12px;
+      border-radius: 4px;
+      font-size: 14px;
+      z-index: 10;
+    }
+    
+    #controls select {
+      padding: 6px 10px;
+      background: #333;
+      color: #fff;
+      border: 1px solid #555;
+      border-radius: 3px;
+      font-size: 13px;
+      cursor: pointer;
+      width: 300px;
+    }
+    
+    #controls select:hover {
+      border-color: #777;
+    }
+    
+    #video {
+      width: 100%;
+      height: auto;
+      display: block;
+      border: 1px solid #333;
+    }
+    
+    .disconnected { color: #f00; }
+    .connected { color: #0f0; }
+  </style>
+</head>
+<body>
+  <div id="container">
+    <div id="status">Connecting...</div>
+    <div id="controls">
+      <select id="source-select">
+        <option value="">Loading sources...</option>
+      </select>
+    </div>
+    <img id="video" alt="NDI Video Stream">
+  </div>
+
+  <script>
+    const statusEl = document.getElementById('status');
+    const videoEl = document.getElementById('video');
+    const sourceSelect = document.getElementById('source-select');
+    let ws = null;
+    let selectedSource = 'MaxNDISender';
+    
+    // Load available NDI sources
+    async function loadSources() {
+      try {
+        const response = await fetch('/api/sources');
+        const data = await response.json();
+        
+        sourceSelect.innerHTML = '';
+        
+        if (data.error) {
+          console.error('API error:', data);
+          sourceSelect.innerHTML = `<option value="">Error: ${data.details || data.error}</option>`;
+          return;
+        }
+        
+        if (data.sources && data.sources.length > 0) {
+          data.sources.forEach(source => {
+            const option = document.createElement('option');
+            option.value = source.name;
+            option.textContent = source.name;
+            if (source.name.includes(selectedSource)) {
+              option.selected = true;
+            }
+            sourceSelect.appendChild(option);
+          });
+        } else {
+          sourceSelect.innerHTML = '<option value="">No sources found</option>';
+        }
+      } catch (err) {
+        console.error('Failed to load sources:', err);
+        sourceSelect.innerHTML = '<option value="">Network error</option>';
+      }
+    }
+    
+    // Connect to WebSocket
+    function connectWebSocket() {
+      if (ws) ws.close();
+      
+      ws = new WebSocket(`ws://${window.location.host}`);
+      
+      ws.onopen = () => {
+        statusEl.textContent = '● Connected';
+        statusEl.className = 'connected';
+        console.log('[WS] Connected to server');
+      };
+      
+      ws.onmessage = (event) => {
+        videoEl.src = event.data;
+      };
+      
+      ws.onerror = (error) => {
+        statusEl.textContent = '● Error';
+        statusEl.className = 'disconnected';
+        console.error('[WS] Error:', error);
+      };
+      
+      ws.onclose = () => {
+        statusEl.textContent = '● Disconnected';
+        statusEl.className = 'disconnected';
+        console.log('[WS] Disconnected');
+      };
+    }
+    
+    // Event listeners
+    sourceSelect.addEventListener('change', () => {
+      selectedSource = sourceSelect.value;
+      if (selectedSource && ws && ws.readyState === WebSocket.OPEN) {
+        console.log('Switching to source:', selectedSource);
+        ws.send(JSON.stringify({
+          action: 'switchSource',
+          source: selectedSource
+        }));
+      }
+    });
+    
+    // Initialize
+    loadSources();
+    connectWebSocket();
+  </script>
+</body>
+</html>
