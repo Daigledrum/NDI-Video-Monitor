@@ -3,6 +3,7 @@ const WebSocket = require('ws');
 const http = require('http');
 const { spawn } = require('child_process');
 const { execSync } = require('child_process');
+const os = require('os');
 
 // ─── CONFIG ────────────────────────────────────────────────────────────────
 const HTTP_PORT = 3001;
@@ -227,6 +228,24 @@ function cleanup() {
 // ─── START SERVER ──────────────────────────────────────────────────────────
 server.listen(HTTP_PORT, () => {
     console.log(`[SERVER] Listening on http://localhost:${HTTP_PORT}`);
+    const nets = os.networkInterfaces();
+    const addresses = [];
+    Object.keys(nets).forEach(name => {
+        nets[name].forEach(net => {
+            if (net.family === 'IPv4' && !net.internal) {
+                addresses.push(net.address);
+            }
+        });
+    });
+    if (addresses.length > 0) {
+        console.log('[SERVER] Access from other devices:');
+        addresses.forEach(addr => {
+            console.log(`  http://${addr}:${HTTP_PORT}/viewer.html`);
+            console.log(`  http://${addr}:${HTTP_PORT}/ndi_auto.html`);
+        });
+    } else {
+        console.log('[SERVER] No LAN IP detected. Make sure you are on Wi‑Fi/Ethernet.');
+    }
     console.log(`[INFO] Auto-discovering NDI sources...`);
     
     // Auto-discover and start with first available source
