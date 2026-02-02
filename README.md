@@ -1,9 +1,10 @@
 # NDI Video Monitor
 
-A real-time web-based NDI (Network Device Interface) video monitor that streams NDI sources directly to your browser. Built with Node.js, Express, FFmpeg, and the NDI SDK.
+A real-time NDI (Network Device Interface) video monitor with both a desktop application and web-based interface. Stream NDI sources with an Electron desktop app or access via web browser. Built with Electron, Node.js, Express, FFmpeg, and the NDI SDK.
 
 ## Features
 
+- 🖥️ **Desktop Application** - Native Electron app (NDI Server Control) with built-in GUI
 - 🎥 **Live NDI Streaming** - Stream NDI sources to web browsers in real-time
 - 📡 **Source Discovery** - Automatically detect available NDI sources on your network
 - 🔄 **Dynamic Switching** - Switch between NDI sources from the web interface
@@ -82,7 +83,41 @@ npm install
 This installs:
 - `express` - Web server framework
 - `ws` - WebSocket support
-- `canvas` - Image manipulation (if needed)
+- `canvas` - Image manipulation
+- `electron` - Desktop application framework
+- `electron-builder` - Application packaging
+
+## Usage
+
+You can run this application in two ways:
+
+### Option 1: Desktop Application (Recommended)
+
+**Start the Electron desktop app:**
+```bash
+npm start
+```
+
+This launches **NDI Server Control**, a native desktop application with:
+- Built-in NDI stream viewer
+- Automatic server management (starts/stops with the app)
+- Native window controls
+- System integration
+
+**Development mode** (with dev tools):
+```bash
+npm run dev
+```
+
+**Build standalone app:**
+```bash
+npm run build-mac
+```
+Creates a distributable `.dmg` file in the `dist/` folder.
+
+### Option 2: Web Server Only
+
+If you prefer to run just the web server without the desktop app:
 
 ### 3. Compile NDI Tools
 
@@ -106,21 +141,15 @@ gcc -o ndi_list ndi_list.c \
   -Wl,-rpath,/Library/NDI\ SDK\ for\ Apple/lib/macOS
 ```
 
-## Configuration
+### Option 2: Web Server Only
 
-Edit `ndi_server.js` if needed:
+If you prefer to run just the web server without the desktop app:
 
-```javascript
-// ─── CONFIG ────────────────────────────────────────────────────────────────
-const HTTP_PORT = 3001;              // Web server port
-const JPEG_QUALITY = 80;             // JPEG quality (1-100, higher = better)
-// NDI sources are auto-discovered, no need to configure source names
+**Start the server:**
+```bash
+npm run server
 ```
-
-## Usage
-
-### Start the Server
-
+Or:
 ```bash
 node ndi_server.js
 ```
@@ -136,21 +165,27 @@ You should see:
 [FFMPEG] Started encoding pipeline
 ```
 
-**Note**: The server will automatically detect and use the first available NDI source on your network.
+**Access the web interface** at `http://localhost:3001/ndi_auto.html`
 
-### Access the Web Interface
+## Configuration
 
-Open in your browser:ndi_auto.html
+Edit `ndi_server.js` if needed:
+
+```javascript
+// ─── CONFIG ────────────────────────────────────────────────────────────────
+const HTTP_PORT = 3001;              // Web server port
+const JPEG_QUALITY = 80;             // JPEG quality (1-100, higher = better)
+// NDI sources are auto-discovered, no need to configure source names
 ```
 
-**Other viewers available:**
-- `ndi_auto.html` - **Recommended**: Auto-discovery with source switching
-- `viewer.html` - Simple viewer with manual source selection
-http://localhost:3001/viewer.html
-```
+## Web Interface Features
 
-### Web Interface
+**Available viewers:**
+- `http://localhost:3001/ndi_auto.html` - **Recommended**: Auto-discovery with source switching
+- `http://localhost:3001/viewer.html` - Simple viewer with manual source selection  
+- `http://localhost:3001/ndi_viewer.html` - Legacy viewer
 
+**Features:**
 - **Status Indicator** (top-left): Shows connection status
   - 🟢 Connected - receiving video frames
   - 🔴 Disconnected - waiting for source or connection lost
@@ -178,18 +213,22 @@ Example: `http://192.168.1.100:3001/viewer.html`
 
 ## File Structure
 
-```recv               # Compiled NDI receiver binary
+```
+├── main.js                # Electron main process
+├── preload.js             # Electron preload script
+├── ndi_server.js          # Node.js server with NDI integration
+├── ndi_recv.c             # C program to receive NDI streams
 ├── ndi_list.c             # C program to discover NDI sources
-├── ndi_list               # Compiled NDI discovery binary
-├── package.json           # Node dependencies
+├── package.json           # Node dependencies and scripts
 ├── package-lock.json      # Dependency lock file
 ├── README.md              # This file
-└── public/
-    ├── ndi_auto.html      # Main viewer with auto-discovery (recommended)
-    └── viewer.html        # Simpleile
-└── public/
-    ├── viewer.html        # Web interface
-    ├── index.html         # Alternative viewer (WebRTC)
+├── gui/                   # Desktop application UI
+│   ├── index.html         # Electron window HTML
+│   ├── renderer.js        # Electron renderer process
+│   └── styles.css         # Desktop app styling
+└── public/                # Web interface files
+    ├── ndi_auto.html      # Main viewer with auto-discovery
+    ├── viewer.html        # Simple viewer
     └── ndi_viewer.html    # Legacy viewer
 ```
 
@@ -266,8 +305,9 @@ ffmpegProc = spawn('ffmpeg', [
 
 ### Project Structure
 
-- **Backend**: Node.js + Express server with WebSocket support
-- **C Bindings**: Native NDI SDK access via compiled C programs
+- **Desktop App**: Electron-based native application (main.js, preload.js, gui/)
+- **Backend**: Node.js + Express server with WebSocket support (ndi_server.js)
+- **C Bindings**: Native NDI SDK access via compiled C programs (ndi_recv.c, ndi_list.c)
 - **Frontend**: Vanilla JavaScript (no frameworks)
 - **Streaming**: JPEG frames via WebSocket + base64 encoding
 
