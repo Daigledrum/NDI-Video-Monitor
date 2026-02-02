@@ -1,0 +1,51 @@
+{
+  "name": "ndi-control-desktop",
+  "version": "1.0.0",
+  "description": "Desktop control panel for NDI Server with Electron GUI",
+  "main": "main.js",
+  "homepage": "./",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "build": "electron-builder",
+    "build-mac": "electron-builder --mac",
+    "server": "node ndi_server.js"
+  },
+  "dependencies": {
+    "canvas": "^3.2.1",
+    "express": "^4.18.2",
+    "ws": "^8.14.2"
+  },
+  "devDependencies": {
+    "electron": "27.0.0",
+    "electron-builder": "24.6.4"
+  },
+  "build": {
+    "appId": "com.ndi.control",
+    "productName": "NDI Server Control",
+    "asar": true,
+    "asarUnpack": [
+      "ndi_server.js",
+      "ndi_recv",
+      "ndi_list",
+      "public/**/*"
+    ],
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "category": "public.app-category.utilities"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "ndi_server.js",
+      "ndi_recv",
+      "ndi_list",
+      "gui/**/*",
+      "public/**/*",
+      "package.json"
+    ]
+  }
+}

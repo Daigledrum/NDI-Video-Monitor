@@ -1,0 +1,36 @@
+# Node modules
+node_modules/
+npm-debug.log*
+yarn-error.log*
+
+# Compiled binaries
+ndi_recv
+ndi_list
+*.o
+*.out
+
+# Electron build outputs
+dist/
+build/
+out/
+*.dmg
+*.zip
+*.exe
+*.deb
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+*.log
+logs/
+
+# Environment variables
+.env
+.env.local

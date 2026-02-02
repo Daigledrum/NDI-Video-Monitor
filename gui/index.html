@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NDI Server Control</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <div class="header">
+            <div class="header-content">
+                <h1>🎬 NDI Server Control</h1>
+                <div class="connection-badge">
+                    <span class="status-dot" id="connection-dot"></span>
+                    <span id="connection-text">Connecting...</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            <!-- Sidebar -->
+            <div class="sidebar">
+                <!-- Status Panel -->
+                <div class="panel">
+                    <h3>📊 Status</h3>
+                    <div class="status-item">
+                        <label>Pipeline:</label>
+                        <span class="status-badge stopped" id="pipeline-status">Stopped</span>
+                    </div>
+                    <div class="status-item">
+                        <label>Source:</label>
+                        <span id="current-source">—</span>
+                    </div>
+                    <div class="status-item">
+                        <label>Viewers:</label>
+                        <span id="viewer-count">0</span>
+                    </div>
+                </div>
+
+                <!-- Controls -->
+                <div class="panel">
+                    <h3>🎮 Controls</h3>
+                    <button class="btn btn-primary" id="btn-start">▶ Start</button>
+                    <button class="btn btn-danger" id="btn-stop" disabled>⏹ Stop</button>
+                </div>
+
+                <!-- Source Selection -->
+                <div class="panel">
+                    <h3>📺 Sources</h3>
+                    <select id="source-select">
+                        <option>Loading...</option>
+                    </select>
+                    <button class="btn btn-secondary" id="btn-switch">Switch</button>
+                    <button class="btn btn-secondary" id="btn-refresh-sources" title="Refresh sources">🔄</button>
+                </div>
+            </div>
+
+            <!-- Main Panel -->
+            <div class="main-panel">
+                <!-- Log Viewer -->
+                <div class="panel full-height">
+                    <div class="panel-header">
+                        <h3>📝 Server Logs</h3>
+                        <button class="btn-icon" id="btn-clear-logs" title="Clear logs">🗑️</button>
+                    </div>
+                    <div class="log-container" id="log-container">
+                        <div class="log-entry log-info">[Waiting for connection...]</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="footer">
+            <p id="footer-addresses">Loading network addresses...</p>
+        </div>
+    </div>
+
+    <script src="renderer.js"></script>
+</body>
+</html>

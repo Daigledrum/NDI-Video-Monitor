@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <title>NDI Viewer</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #1a1a1a;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      color: #fff;
+      overflow: hidden;
+    }
+    
+    #video-container {
+      position: relative;
+      width: 100%;
+      max-width: 100vw;
+      max-height: 90vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+    
+    #video {
+      width: auto;
+      height: auto;
+      max-width: 100%;
+      max-height: 90vh;
+      border: 2px solid #333;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+    }
+    
+    #status {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      background: rgba(0,0,0,0.8);
+      padding: 10px 20px;
+      border-radius: 5px;
+      font-size: 14px;
+      z-index: 10;
+    }
+    
+    #controls {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      background: rgba(0,0,0,0.8);
+      padding: 15px;
+      border-radius: 5px;
+      z-index: 10;
+    }
+    
+    #controls label {
+      display: block;
+      margin-bottom: 5px;
+      font-size: 12px;
+      color: #aaa;
+    }
+    
+    #controls select {
+      width: 250px;
+      padding: 8px;
+      background: #333;
+      color: #fff;
+      border: 1px solid #555;
+      border-radius: 3px;
+      font-size: 14px;
+      cursor: pointer;
+    }
+    
+    #controls select:hover {
+      border-color: #777;
+    }
+    
+    #controls select:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    
+    #refresh-btn {
+      margin-top: 8px;
+      padding: 6px 12px;
+      background: #0066cc;
+      color: #fff;
+      border: none;
+      border-radius: 3px;
+      font-size: 12px;
+      cursor: pointer;
+      width: 100%;
+    }
+    
+    #refresh-btn:hover {
+      background: #0052a3;
+    }
+    
+    .status-dot {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      margin-right: 8px;
+      animation: pulse 2s infinite;
+    }
+    
+    .connected { background: #0f0; }
+    .disconnected { background: #f00; animation: none; }
+    
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+    
+    #stats {
+      position: absolute;
+      bottom: 20px;
+      right: 20px;
+      background: rgba(0,0,0,0.8);
+      padding: 10px 15px;
+      border-radius: 5px;
+      font-size: 12px;
+      font-family: monospace;
+      z-index: 10;
+    }
+    
+    .loading {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 18px;
+      color: #888;
+    }
+  </style>
+</head>
+<body>
+  <div id="status">
+    <span class="status-dot disconnected"></span>
+    <span id="status-text">Connecting...</span>
+  </div>
+  
+  <div id="controls">
+    <label for="source-select">NDI Source:</label>
+    <select id="source-select" disabled>
+      <option value="">Loading sources...</option>
+    </select>
+    <button id="refresh-btn">Refresh Sources</button>
+  </div>
+  
+  <div id="video-container">
+    <img id="video" alt="NDI Stream">
+    <div class="loading">Waiting for stream...</div>
+  </div>
+  
+  <div id="stats">
+    FPS: <span id="fps">0</span><br>
+    Latency: <span id="latency">0</span>ms
+  </div>
+
+  <script>
+    const video = document.getElementById('video');
+    const statusDot = document.querySelector('.status-dot');
+    const statusText = document.getElementById('status-text');
+    const fpsDisplay = document.getElementById('fps');
+    const latencyDisplay = document.getElementById('latency');
+    const loading = document.querySelector('.loading');
+    const sourceSelect = document.getElementById('source-select');
+    const refreshBtn = document.getElementById('refresh-btn');
+    
+    let ws = null;
+    let frameCount = 0;
+    let lastFrameTime = Date.now();
+    let fpsInterval = null;
+    let availableSources = [];
+    let currentSource = null;
+    
+    async function loadSources() {
+      try {
+        sourceSelect.disabled = true;
+        sourceSelect.innerHTML = '<option value="">Loading...</option>';
+        
+        const response = await fetch('/api/sources');
+        const data = await response.json();
+        
+        availableSources = data.sources || [];
+        sourceSelect.innerHTML = '';
+        
+        if (availableSources.length === 0) {
+          sourceSelect.innerHTML = '<option value="">No NDI sources found</option>';
+          statusText.textContent = 'No sources available';
+        } else {
+          availableSources.forEach(source => {
+            const option = document.createElement('option');
+            option.value = source.name;
+            option.textContent = source.name;
+            sourceSelect.appendChild(option);
+          });
+          sourceSelect.disabled = false;
+          
+          if (!currentSource && availableSources.length > 0) {
+            sourceSelect.value = availableSources[0].name;
+            selectSource(availableSources[0].name);
+          }
+        }
+      } catch (err) {
+        console.error('[API] Error loading sources:', err);
+        sourceSelect.innerHTML = '<option value="">Error loading sources</option>';
+        statusText.textContent = 'Error loading sources';
+      }
+    }
+    
+    function connect() {
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const host = window.location.host || 'localhost:3000';
+      const wsUrl = `${protocol}//${host}`;
+      
+      console.log('[WS] Connecting to:', wsUrl);
+      ws = new WebSocket(wsUrl);
+      ws.binaryType = 'blob';
+      
+      ws.onopen = () => {
+        console.log('[WS] Connected');
+        statusDot.className = 'status-dot connected';
+        statusText.textContent = 'Connected';
+        loading.style.display = 'none';
+        
+        fpsInterval = setInterval(() => {
+          fpsDisplay.textContent = frameCount.toFixed(1);
+          frameCount = 0;
+        }, 1000);
+        
+        if (currentSource) {
+          selectSource(currentSource);
+        }
+      };
+      
+      ws.onmessage = (event) => {
+        const now = Date.now();
+        const latency = now - lastFrameTime;
+        
+        if (typeof event.data === 'string') {
+          video.src = event.data;
+        } else {
+          const url = URL.createObjectURL(event.data);
+          const oldSrc = video.src;
+          video.src = url;
+          if (oldSrc && oldSrc.startsWith('blob:')) {
+            setTimeout(() => URL.revokeObjectURL(oldSrc), 100);
+          }
+        }
+        
+        frameCount++;
+        latencyDisplay.textContent = latency.toFixed(0);
+        lastFrameTime = now;
+      };
+      
+      ws.onerror = (error) => {
+        console.error('[WS] Error:', error);
+        statusText.textContent = 'Error';
+      };
+      
+      ws.onclose = () => {
+        console.log('[WS] Disconnected');
+        statusDot.className = 'status-dot disconnected';
+        statusText.textContent = 'Disconnected';
+        loading.style.display = 'block';
+        
+        if (fpsInterval) {
+          clearInterval(fpsInterval);
+          fpsInterval = null;
+        }
+        
+        setTimeout(connect, 2000);
+      };
+    }
+    
+    function selectSource(sourceName) {
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        setTimeout(() => selectSource(sourceName), 100);
+        return;
+      }
+      
+      currentSource = sourceName;
+      console.log('[SOURCE] Selecting:', sourceName);
+      
+      ws.send(JSON.stringify({
+        type: 'select_source',
+        source: sourceName
+      }));
+      
+      statusText.textContent = `Streaming: ${sourceName}`;
+    }
+    
+    sourceSelect.addEventListener('change', (e) => {
+      const sourceName = e.target.value;
+      if (sourceName) {
+        selectSource(sourceName);
+      }
+    });
+    
+    refreshBtn.addEventListener('click', () => {
+      loadSources();
+    });
+    
+    connect();
+    loadSources();
+    setInterval(loadSources, 10000);
+  </script>
+</body>
+</html>
