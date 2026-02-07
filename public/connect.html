@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <title>NDI Monitor - Connect</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #0b0b0b;
+      color: #fff;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      padding: 20px;
+      line-height: 1.6;
+    }
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+    }
+    h1 {
+      font-size: 28px;
+      margin-bottom: 20px;
+      color: #1f6feb;
+    }
+    h2 {
+      font-size: 20px;
+      margin-top: 30px;
+      margin-bottom: 15px;
+      color: #58a6ff;
+    }
+    .info-box {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 20px;
+    }
+    .address-list {
+      list-style: none;
+      padding: 0;
+    }
+    .address-item {
+      background: #0d1117;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      padding: 12px;
+      margin-bottom: 10px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .address-url {
+      font-family: monospace;
+      color: #58a6ff;
+      font-size: 14px;
+    }
+    .qr-code {
+      background: #fff;
+      padding: 10px;
+      border-radius: 6px;
+      display: inline-block;
+      margin-top: 10px;
+    }
+    button {
+      background: #1f6feb;
+      border: none;
+      color: #fff;
+      padding: 8px 16px;
+      border-radius: 6px;
+      font-size: 13px;
+      cursor: pointer;
+    }
+    button:hover {
+      background: #388bfd;
+    }
+    .copy-btn {
+      background: #238636;
+      padding: 6px 12px;
+      font-size: 12px;
+    }
+    .copy-btn:hover {
+      background: #2ea043;
+    }
+    .viewer-links {
+      display: flex;
+      gap: 10px;
+      margin-top: 15px;
+    }
+    .viewer-link {
+      flex: 1;
+      background: #1f6feb;
+      padding: 15px;
+      border-radius: 6px;
+      text-align: center;
+      text-decoration: none;
+      color: #fff;
+      font-weight: 500;
+    }
+    .viewer-link:hover {
+      background: #388bfd;
+    }
+    .status {
+      display: inline-block;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: 600;
+      margin-left: 10px;
+    }
+    .status.online {
+      background: #238636;
+      color: #fff;
+    }
+    .status.offline {
+      background: #da3633;
+      color: #fff;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>NDI Video Monitor <span id="status" class="status">Checking...</span></h1>
+    
+    <div class="info-box">
+      <p>Connect to the NDI video stream from any device on your local network using the addresses below.</p>
+    </div>
+
+    <h2>Access URLs</h2>
+    <div id="addresses">
+      <p>Loading addresses...</p>
+    </div>
+
+    <h2>Viewers</h2>
+    <div class="viewer-links">
+      <a href="/webrtc_viewer.html" class="viewer-link">WebRTC Viewer</a>
+      <a href="/ndi_viewer.html" class="viewer-link">MJPEG Viewer</a>
+    </div>
+
+    <h2>Instructions</h2>
+    <div class="info-box">
+      <ol style="padding-left: 20px;">
+        <li>Make sure your device (phone, tablet, iPad) is on the same Wi-Fi network</li>
+        <li>Copy one of the URLs above or scan the QR code</li>
+        <li>Open the URL in your device's browser (Safari, Chrome, etc.)</li>
+        <li>Click "Connect" to start viewing the stream</li>
+      </ol>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+  <script>
+    const statusEl = document.getElementById('status');
+    const addressesDiv = document.getElementById('addresses');
+
+    async function checkStatus() {
+      try {
+        const response = await fetch('/api/status');
+        const data = await response.json();
+        statusEl.textContent = 'Online';
+        statusEl.className = 'status online';
+      } catch (err) {
+        statusEl.textContent = 'Offline';
+        statusEl.className = 'status offline';
+      }
+    }
+
+    async function loadAddresses() {
+      try {
+        const response = await fetch('/api/addresses');
+        const data = await response.json();
+        
+        addressesDiv.innerHTML = '<ul class="address-list"></ul>';
+        const list = addressesDiv.querySelector('.address-list');
+
+        if (data.addresses && data.addresses.length > 0) {
+          data.addresses.forEach(address => {
+            const webrtcUrl = `http://${address}:3001/webrtc_viewer.html`;
+            const mjpegUrl = `http://${address}:3001/ndi_viewer.html`;
+            
+            const item = document.createElement('li');
+            item.className = 'address-item';
+            item.innerHTML = `
+              <div>
+                <div class="address-url">WebRTC: ${webrtcUrl}</div>
+                <div class="address-url" style="margin-top: 4px;">MJPEG: ${mjpegUrl}</div>
+                <div class="qr-code" id="qr-${address.replace(/\./g, '-')}"></div>
+              </div>
+              <button class="copy-btn" onclick="copyUrl('${webrtcUrl}')">Copy WebRTC</button>
+            `;
+            list.appendChild(item);
+
+            // Generate QR code for WebRTC URL
+            QRCode.toCanvas(document.createElement('canvas'), webrtcUrl, {
+              width: 150,
+              margin: 1
+            }, (error, canvas) => {
+              if (!error) {
+                const qrDiv = document.getElementById(`qr-${address.replace(/\./g, '-')}`);
+                qrDiv.innerHTML = '';
+                qrDiv.appendChild(canvas);
+              }
+            });
+          });
+        } else {
+          addressesDiv.innerHTML = '<p>No network addresses found. Make sure you are connected to a network.</p>';
+        }
+      } catch (err) {
+        console.error('Failed to load addresses:', err);
+        addressesDiv.innerHTML = '<p>Error loading addresses. Please refresh the page.</p>';
+      }
+    }
+
+    function copyUrl(url) {
+      navigator.clipboard.writeText(url).then(() => {
+        alert('URL copied to clipboard!');
+      }).catch(err => {
+        console.error('Failed to copy:', err);
+        prompt('Copy this URL:', url);
+      });
+    }
+
+    // Initial load
+    checkStatus();
+    loadAddresses();
+
+    // Refresh status every 5 seconds
+    setInterval(checkStatus, 5000);
+  </script>
+</body>
+</html>

@@ -19,15 +19,27 @@ A real-time NDI (Network Device Interface) video monitor with both a desktop app
 - FFmpeg
 - Node.js 14+
 
-### Other Platforms
-Currently tested on macOS. Porting to Windows/Linux requires adjusting:
-- NDI library path
-- C compiler flags
-- Binary naming conventions
+### Windows 10/11
+- Windows 10 Build 1909 or later
+- NDI SDK for Windows
+- FFmpeg
+- Node.js 14+
+- Visual C++ Build Tools (for compilation)
+
+### Linux (Ubuntu/Debian)
+- Ubuntu 18.04 LTS or later
+- NDI SDK for Linux
+- FFmpeg
+- Node.js 14+
+- Build essentials (gcc, make)
 
 ## Prerequisites
 
-### 1. Install NDI SDK for Apple
+The application now supports **cross-platform** deployment! Paths and compilation are automatically configured based on your operating system.
+
+### macOS Setup
+
+#### 1. Install NDI SDK for Apple
 
 Download from [NDI Official Website](https://ndi.tv/download/) and install to `/Library/NDI SDK for Apple/`
 
@@ -36,32 +48,83 @@ Verify installation:
 ls /Library/NDI\ SDK\ for\ Apple/lib/macOS/
 ```
 
-### 2. Install FFmpeg
+#### 2. Install FFmpeg
 
 Using Homebrew:
 ```bash
 brew install ffmpeg
 ```
 
-Verify:
-```bash
-ffmpeg -version
-```
-
-### 3. Install Node.js
+#### 3. Install Node.js
 
 Using Homebrew:
 ```bash
 brew install node
 ```
 
-Or download from [nodejs.org](https://nodejs.org/)
+---
 
-Verify:
-```bash
-node --version
-npm --version
+### Windows Setup
+
+#### 1. Install NDI SDK for Windows
+
+1. Download from [NDI Official Website](https://ndi.tv/download/)
+2. Run the installer
+3. Default installation path: `C:\Program Files\NDI\NDI 5 SDK\`
+
+Verify installation:
+```cmd
+dir "C:\Program Files\NDI\NDI 5 SDK\lib\x64\"
 ```
+
+#### 2. Install FFmpeg
+
+Using Chocolatey (recommended):
+```cmd
+choco install ffmpeg
+```
+
+Or download from [ffmpeg.org](https://ffmpeg.org/download.html) and add to PATH.
+
+#### 3. Install Visual C++ Build Tools
+
+Required for compiling ndi_recv.c:
+
+Option A: Install Visual Studio with C++ tools
+Option B: Install standalone [Visual C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/)
+
+#### 4. Install Node.js
+
+Download from [nodejs.org](https://nodejs.org/) and install.
+
+---
+
+### Linux Setup (Ubuntu/Debian)
+
+#### 1. Install NDI SDK for Linux
+
+```bash
+# Download from NDI website (requires registration)
+# Extract to /opt/ndi/
+sudo mkdir -p /opt/ndi
+sudo tar xzf NDI\ SDK\ for\ Linux\ -\ x86_64.tar.gz -C /opt/ndi/
+```
+
+#### 2. Install FFmpeg and Build Tools
+
+```bash
+sudo apt-get update
+sudo apt-get install ffmpeg gcc g++ make nodejs npm
+```
+
+#### 3. Configure Library Path
+
+```bash
+echo 'export LD_LIBRARY_PATH=/opt/ndi/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH' >> ~/.bashrc
+source ~/.bashrc
+```
+
+---
 
 ## Installation
 
@@ -111,9 +174,83 @@ npm run dev
 
 **Build standalone app:**
 ```bash
+# Mac only (creates .dmg and .zip)
 npm run build-mac
+
+# Windows only (creates installer and portable .exe)
+npm run build-win
+
+# Build for both platforms (requires appropriate OS or CI)
+npm run build-all
 ```
-Creates a distributable `.dmg` file in the `dist/` folder.
+Creates distributable files in the `dist/` folder.
+
+## Building for Distribution
+
+### Prerequisites for Building
+
+**On Mac:**
+- All Mac prerequisites installed (NDI SDK, Node.js, etc.)
+- Xcode Command Line Tools
+
+**On Windows:**
+- All Windows prerequisites installed
+- Visual Studio with C++ Build Tools
+
+### Compile Native Binaries First
+
+Before building the app, compile the NDI binaries for your target platform:
+
+**Mac:**
+```bash
+gcc -o ndi_recv ndi_recv.c \
+  -L"/Library/NDI SDK for Apple/lib/macOS" \
+  -lndi \
+  -I"/Library/NDI SDK for Apple/include" \
+  -Wl,-rpath,"/Library/NDI SDK for Apple/lib/macOS"
+
+gcc -o ndi_list ndi_list.c \
+  -L"/Library/NDI SDK for Apple/lib/macOS" \
+  -lndi \
+  -I"/Library/NDI SDK for Apple/include" \
+  -Wl,-rpath,"/Library/NDI SDK for Apple/lib/macOS"
+```
+
+**Windows:**
+```cmd
+cl /Fe:ndi_recv.exe ndi_recv.c /I"C:\Program Files\NDI\NDI 5 SDK\include" /link /LIBPATH:"C:\Program Files\NDI\NDI 5 SDK\lib\x64" Processing.NDI.Lib.x64.lib
+
+cl /Fe:ndi_list.exe ndi_list.c /I"C:\Program Files\NDI\NDI 5 SDK\include" /link /LIBPATH:"C:\Program Files\NDI\NDI 5 SDK\lib\x64" Processing.NDI.Lib.x64.lib
+```
+
+### Build the Electron App
+
+```bash
+# Mac: Creates NDI Server Control.dmg and .zip
+npm run build-mac
+
+# Windows: Creates NDI Server Control Setup.exe and portable version
+npm run build-win
+```
+
+**Output:**
+- **Mac:** `dist/NDI Server Control-1.0.0.dmg` and `.zip`
+- **Windows:** `dist/NDI Server Control Setup 1.0.0.exe` and portable `.exe`
+
+### Distribution Checklist
+
+For users to install easily:
+
+✅ **Include in release:**
+1. The built installer (`.dmg` for Mac, `.exe` for Windows)
+2. Installation instructions (see below)
+3. Note about NDI SDK requirement
+
+✅ **User installation steps:**
+1. Install NDI SDK for their platform
+2. Install FFmpeg
+3. Download and run your installer
+4. Launch the app
 
 ### Option 2: Web Server Only
 

@@ -77,16 +77,22 @@ int main(int argc, char* argv[]) {
     }
 
     bool first_frame = true;
+    int frame_count = 0;
     while (1) {
         NDIlib_video_frame_v2_t video_frame;
         NDIlib_frame_type_e frame_type = NDIlib_recv_capture_v2(receiver, &video_frame, NULL, NULL, 1000);
         if (frame_type == NDIlib_frame_type_video) {
             if (first_frame) {
-                fprintf(stderr, "[ndi_recv] VIDEO %dx%d fps=%.2f\n",
+                fprintf(stderr, "[ndi_recv] VIDEO %dx%d fps=%.2f fourcc=%c%c%c%c\n",
                     video_frame.xres, video_frame.yres,
-                    (double)video_frame.frame_rate_N / video_frame.frame_rate_D);
+                    (double)video_frame.frame_rate_N / video_frame.frame_rate_D,
+                    (char)((video_frame.FourCC >> 0) & 0xFF),
+                    (char)((video_frame.FourCC >> 8) & 0xFF),
+                    (char)((video_frame.FourCC >> 16) & 0xFF),
+                    (char)((video_frame.FourCC >> 24) & 0xFF));
                 first_frame = false;
             }
+            // UYVY is 2 bytes per pixel (4 bytes per 2 pixels)
             size_t frame_size = (size_t)video_frame.xres * video_frame.yres * 2;
             size_t written = fwrite(video_frame.p_data, 1, frame_size, stdout);
             if (written != frame_size) {
@@ -94,8 +100,11 @@ int main(int argc, char* argv[]) {
                 break;
             }
             NDIlib_recv_free_video_v2(receiver, &video_frame);
+            frame_count++;
         } else if (frame_type == NDIlib_frame_type_none) {
             continue;
+        } else if (frame_type == NDIlib_frame_type_metadata) {
+            fprintf(stderr, "[ndi_recv] Received metadata (may indicate format change)\n");
         }
     }
 

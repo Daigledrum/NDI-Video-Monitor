@@ -12,6 +12,9 @@ contextBridge.exposeInMainWorld('api', {
     },
     quitApp: () => {
         return ipcRenderer.invoke('app-quit');
+    },
+    generateQRCode: (text, options) => {
+        return ipcRenderer.invoke('generate-qr', text, options);
     }
 });
 

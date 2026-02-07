@@ -2,16 +2,20 @@ const { app, BrowserWindow, ipcMain, Menu } = require('electron');
 const path = require('path');
 const { spawn, execSync } = require('child_process');
 const os = require('os');
+const fs = require('fs');
 
 let mainWindow;
 let serverProcess;
 let pipelineRunning = false;
 let ndiProcess;
 let ffmpegProcess;
-let jpegBuffer = Buffer.allocUnsafe(0);
 let currentSource = null;
 
 const SERVER_PORT = 3001;
+
+// Platform detection
+const isWindows = process.platform === 'win32';
+const isMac = process.platform === 'darwin';
 
 // Start the Node.js server in the background
 function startNodeServer() {
@@ -19,7 +23,16 @@ function startNodeServer() {
         try {
             // When packaged, use the unpacked directory
             const workDir = __dirname.replace('app.asar', 'app.asar.unpacked');
-            serverProcess = spawn('node', ['ndi_server.js'], {
+            
+            // Find Node.js binary based on platform
+            let nodeBin = 'node';
+            if (isMac) {
+                const preferredNode = '/opt/homebrew/opt/node@20/bin/node';
+                nodeBin = fs.existsSync(preferredNode) ? preferredNode : 'node';
+            }
+            // On Windows, 'node' should work from PATH
+            
+            serverProcess = spawn(nodeBin, ['ndi_server.js'], {
                 cwd: workDir,
                 stdio: 'inherit'
             });
@@ -120,11 +133,17 @@ ipcMain.handle('api-call', async (event, endpoint, method = 'GET', data = null) 
         console.log(`[IPC] API call: ${method} ${url}`);
         
         if (method === 'POST') {
-            const response = await fetch(url, {
+            const options = {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(data)
-            });
+                headers: {}
+            };
+
+            if (data !== null && data !== undefined) {
+                options.headers['Content-Type'] = 'application/json';
+                options.body = JSON.stringify(data);
+            }
+
+            const response = await fetch(url, options);
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
             }
@@ -144,6 +163,16 @@ ipcMain.handle('api-call', async (event, endpoint, method = 'GET', data = null) 
 
 ipcMain.handle('get-server-url', () => {
     return `ws://localhost:${SERVER_PORT}`;
+});
+
+ipcMain.handle('generate-qr', async (event, text, options) => {
+    const QRCode = require('qrcode');
+    try {
+        return await QRCode.toDataURL(text, options || { width: 150, margin: 1 });
+    } catch (err) {
+        console.error('QR generation error:', err);
+        throw err;
+    }
 });
 
 ipcMain.handle('app-quit', () => {

@@ -9,16 +9,21 @@
     "dev": "electron . --dev",
     "build": "electron-builder",
     "build-mac": "electron-builder --mac",
+    "build-win": "electron-builder --win",
+    "build-all": "electron-builder --mac --win",
     "server": "node ndi_server.js"
   },
   "dependencies": {
+    "@koush/wrtc": "^0.5.3",
     "canvas": "^3.2.1",
     "express": "^4.18.2",
+    "qrcode": "^1.5.4",
+    "sharp": "^0.34.5",
     "ws": "^8.14.2"
   },
   "devDependencies": {
-    "electron": "27.0.0",
-    "electron-builder": "24.6.4"
+    "electron": "^40.1.0",
+    "electron-builder": "^26.7.0"
   },
   "build": {
     "appId": "com.ndi.control",
@@ -26,26 +31,42 @@
     "asar": true,
     "asarUnpack": [
       "ndi_server.js",
-      "ndi_recv",
-      "ndi_list",
-      "public/**/*"
+      "ndi_recv*",
+      "ndi_list*",
+      "public/**/*",
+      "node_modules/canvas/**/*",
+      "node_modules/sharp/**/*",
+      "node_modules/@koush/wrtc/**/*"
     ],
     "mac": {
       "target": [
         "dmg",
         "zip"
       ],
-      "category": "public.app-category.utilities"
+      "category": "public.app-category.utilities",
+      "icon": "assets/icon.png"
+    },
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "icon": "assets/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
     },
     "files": [
       "main.js",
       "preload.js",
       "ndi_server.js",
-      "ndi_recv",
-      "ndi_list",
+      "ndi_recv*",
+      "ndi_list*",
       "gui/**/*",
       "public/**/*",
-      "package.json"
+      "package.json",
+      "node_modules/**/*"
     ]
   }
 }

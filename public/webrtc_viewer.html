@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <title>NDI WebRTC Viewer</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #0b0b0b;
+      color: #fff;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    #container {
+      width: 100vw;
+      height: 100vh;
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    video {
+      width: 100vw;
+      height: 100vh;
+      object-fit: contain;
+      background: #000;
+      z-index: 1;
+    }
+    #status {
+      position: absolute;
+      top: 16px;
+      left: 16px;
+      background: rgba(0,0,0,0.7);
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-size: 13px;
+      z-index: 10;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    #status .stream-name {
+      font-size: 14px;
+      font-weight: 600;
+      color: #58a6ff;
+    }
+    #status .resolution {
+      font-size: 12px;
+      color: #8b949e;
+    }
+    #stats-overlay {
+      position: absolute;
+      bottom: 16px;
+      right: 16px;
+      background: rgba(0,0,0,0.7);
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      z-index: 10;
+      text-align: right;
+    }
+    #stats-overlay .stat-row {
+      margin: 2px 0;
+    }
+    #stats-overlay .stat-label {
+      color: #8b949e;
+      margin-right: 6px;
+    }
+    #stats-overlay .stat-value {
+      color: #fff;
+      font-weight: 500;
+    }
+    #controls {
+      position: absolute;
+      top: 16px;
+      right: 16px;
+      display: flex;
+      gap: 8px;
+      z-index: 10;
+    }
+    button {
+      background: #1f6feb;
+      border: none;
+      color: #fff;
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 13px;
+      cursor: pointer;
+    }
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+  </style>
+</head>
+<body>
+  <div id="container">
+    <div id="status">
+      <span class="stream-name" id="stream-name">Idle</span>
+      <span class="resolution" id="resolution">--</span>
+    </div>
+    <div id="stats-overlay">
+      <div class="stat-row">
+        <span class="stat-label">FPS:</span>
+        <span class="stat-value" id="fps">--</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">Latency:</span>
+        <span class="stat-value" id="latency">--</span>
+      </div>
+    </div>
+    <div id="controls">
+      <button id="btn-connect">Connect</button>
+      <button id="btn-disconnect" disabled>Disconnect</button>
+    </div>
+    <video id="video" autoplay playsinline muted></video>
+  </div>
+
+  <script>
+    const streamNameEl = document.getElementById('stream-name');
+    const fpsEl = document.getElementById('fps');
+    const latencyEl = document.getElementById('latency');
+    const resolutionEl = document.getElementById('resolution');
+    const btnConnect = document.getElementById('btn-connect');
+    const btnDisconnect = document.getElementById('btn-disconnect');
+    const videoEl = document.getElementById('video');
+
+    let pc = null;
+    let statsInterval = null;
+
+    function setStatus(text) {
+      streamNameEl.textContent = text;
+      console.log('[STATUS]', text);
+    }
+
+    function updateStats(stats) {
+      streamNameEl.textContent = stats.sourceName || 'Unknown';
+      fpsEl.textContent = stats.fps || 0;
+      latencyEl.textContent = stats.latency ? `${stats.latency}ms` : '--';
+      resolutionEl.textContent = stats.resolution || '--';
+    }
+
+    async function fetchStats() {
+      try {
+        const res = await fetch('/api/stats');
+        const stats = await res.json();
+        updateStats(stats);
+      } catch (err) {
+        console.error('[STATS] Failed to fetch:', err);
+      }
+    }
+
+    // Check WebRTC support
+    if (!window.RTCPeerConnection) {
+      setStatus('Error: WebRTC not supported in this browser');
+      btnConnect.disabled = true;
+    } else {
+      setStatus('Ready - Click Connect');
+    }
+
+    async function connect() {
+      console.log('[CONNECT] Starting connection...');
+      btnConnect.disabled = true;
+      setStatus('Connecting...');
+
+      try {
+        let selectedSource = null;
+        try {
+          console.log('[CONNECT] Fetching sources...');
+          const sourcesResponse = await fetch('/api/sources');
+          const sourcesData = await sourcesResponse.json();
+          console.log('[CONNECT] Sources:', sourcesData);
+          if (sourcesData && sourcesData.sources && sourcesData.sources.length > 0) {
+            selectedSource = sourcesData.sources[0].name;
+            console.log('[CONNECT] Selected source:', selectedSource);
+          }
+        } catch (e) {
+          console.error('[CONNECT] Error fetching sources:', e);
+        }
+
+        console.log('[CONNECT] Starting stream...');
+        if (selectedSource) {
+          await fetch('/api/start', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ source: selectedSource })
+          });
+        } else {
+          await fetch('/api/start', { method: 'POST' });
+        }
+      } catch (e) {
+        console.error('[CONNECT] Error starting stream:', e);
+      }
+
+      console.log('[CONNECT] Creating peer connection...');
+      pc = new RTCPeerConnection({ iceServers: [] });
+
+      pc.onconnectionstatechange = () => {
+        console.log('[PC] Connection state:', pc.connectionState);
+        setStatus(`Connection: ${pc.connectionState}`);
+        if (pc.connectionState === 'failed' || pc.connectionState === 'closed' || pc.connectionState === 'disconnected') {
+          disconnect();
+        }
+      };
+
+      pc.ontrack = (event) => {
+        console.log('[PC] Track received:', event.track.kind);
+        if (event.streams && event.streams[0]) {
+          console.log('[PC] Using stream from event');
+          videoEl.srcObject = event.streams[0];
+          setStatus('Streaming');
+          return;
+        }
+
+        if (event.track) {
+          console.log('[PC] Creating new MediaStream');
+          const stream = new MediaStream([event.track]);
+          videoEl.srcObject = stream;
+          setStatus('Streaming');
+        }
+      };
+
+      console.log('[CONNECT] Adding transceiver...');
+      pc.addTransceiver('video', { direction: 'recvonly' });
+
+      console.log('[CONNECT] Creating offer...');
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+
+      console.log('[CONNECT] Sending offer to server...');
+      const response = await fetch('/api/webrtc/offer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(pc.localDescription)
+      });
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        console.error('[CONNECT] Server error:', error);
+        throw new Error(error.error || `HTTP ${response.status}`);
+      }
+
+      const answer = await response.json();
+      console.log('[CONNECT] Received answer from server');
+      await pc.setRemoteDescription(answer);
+
+      btnDisconnect.disabled = false;
+      setStatus('Connected');
+      console.log('[CONNECT] Connection complete');
+      
+      // Start polling stats every 500ms
+      statsInterval = setInterval(fetchStats, 500);
+      fetchStats(); // Fetch immediately
+    }
+
+    function disconnect() {
+      // Stop polling stats
+      if (statsInterval) {
+        clearInterval(statsInterval);
+        statsInterval = null;
+      }
+      
+      if (pc) {
+        try { pc.close(); } catch (e) {}
+        pc = null;
+      }
+      videoEl.srcObject = null;
+      btnConnect.disabled = false;
+      btnDisconnect.disabled = true;
+      setStatus('Disconnected');
+      
+      // Reset stats display
+      fpsEl.textContent = '--';
+      latencyEl.textContent = '--';
+      resolutionEl.textContent = '--';
+    }
+
+    btnConnect.addEventListener('click', async () => {
+      console.log('[BTN] Connect button clicked');
+      try {
+        await connect();
+      } catch (err) {
+        console.error('[ERROR]', err);
+        setStatus(`Error: ${err.message}`);
+        btnConnect.disabled = false;
+        disconnect();
+      }
+    });
+
+    btnDisconnect.addEventListener('click', () => {
+      disconnect();
+    });
+  </script>
+</body>
+</html>

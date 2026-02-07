@@ -84,7 +84,7 @@ function updateStatus(data) {
     elements.pipelineStatus.className = `status-badge ${data.running ? 'running' : 'stopped'}`;
 
     // Update source
-    elements.currentSource.textContent = data.source || '—';
+    elements.currentSource.textContent = data.sourceName || data.source || '—';
 
     // Update viewer count
     elements.viewerCount.textContent = data.clients || 0;
@@ -92,6 +92,15 @@ function updateStatus(data) {
     // Update button states
     elements.btnStart.disabled = data.running;
     elements.btnStop.disabled = !data.running;
+}
+
+async function fetchAndUpdateStatus() {
+    try {
+        const stats = await window.api.apiCall('/api/stats');
+        updateStatus(stats);
+    } catch (err) {
+        console.error('Failed to fetch status:', err);
+    }
 }
 
 function addLog(message, level = 'info') {
@@ -156,15 +165,39 @@ async function loadAddresses() {
     try {
         const data = await window.api.apiCall('/api/addresses');
         const footer = document.getElementById('footer-addresses');
+        const qrContainer = document.getElementById('qr-container');
         
         if (data && data.addresses && data.addresses.length > 0) {
-            const viewerLinks = data.addresses.map(addr => 
-                `<strong>Viewer:</strong> <a href="http://${addr}:${data.port}/viewer.html" target="_blank">http://${addr}:${data.port}/viewer.html</a>`
-            ).join('<br>');
-            const autoLinks = data.addresses.map(addr => 
-                `<strong>Auto:</strong> <a href="http://${addr}:${data.port}/ndi_auto.html" target="_blank">http://${addr}:${data.port}/ndi_auto.html</a>`
-            ).join('<br>');
-            footer.innerHTML = `🌐 <strong>Access from other devices:</strong><br>${viewerLinks}<br>${autoLinks}`;
+            const webrtcLinks = data.addresses.map(addr => 
+                `<a href="http://${addr}:${data.port}/webrtc_viewer.html" target="_blank">http://${addr}:${data.port}/webrtc_viewer.html</a>`
+            ).join(' | ');
+            footer.innerHTML = `🌐 <strong>Access from other devices:</strong> ${webrtcLinks}`;
+            
+            // Generate QR codes
+            qrContainer.innerHTML = ''; // Clear existing
+            
+            for (const addr of data.addresses) {
+                const url = `http://${addr}:${data.port}/webrtc_viewer.html`;
+                
+                const qrWrapper = document.createElement('div');
+                qrWrapper.style.textAlign = 'center';
+                
+                const img = document.createElement('img');
+                const dataUrl = await window.api.generateQRCode(url, { width: 150, margin: 1 });
+                img.src = dataUrl;
+                img.style.width = '150px';
+                img.style.height = '150px';
+                
+                const label = document.createElement('div');
+                label.style.fontSize = '11px';
+                label.style.marginTop = '4px';
+                label.style.color = '#8b949e';
+                label.textContent = addr;
+                
+                qrWrapper.appendChild(img);
+                qrWrapper.appendChild(label);
+                qrContainer.appendChild(qrWrapper);
+            }
         } else {
             footer.textContent = '🌐 No network interfaces found';
         }
@@ -203,13 +236,19 @@ elements.btnStop.addEventListener('click', async () => {
     }
 });
 
-elements.btnSwitch.addEventListener('click', () => {
-    const source = elements.sourceSelect.value;
-    if (source && ws && isConnected) {
+elements.btnSwitch.addEventListener('click', async () => {
+    try {
+        const source = elements.sourceSelect.value;
+        if (!source || source === 'Loading...' || source === 'No sources available' || source === 'Error loading sources') {
+            addLog('Please select a valid source', 'error');
+            return;
+        }
+        
         addLog(`Switching to source: ${source}`, 'info');
-        ws.send(JSON.stringify({ action: 'switchSource', source: source }));
-    } else {
-        addLog('Not connected or no source selected', 'error');
+        const result = await window.api.apiCall('/api/switch', 'POST', { source: source });
+        addLog(`Switched to ${source}`, 'success');
+    } catch (err) {
+        addLog(`Failed to switch source: ${err.message}`, 'error');
     }
 });
 
@@ -227,6 +266,11 @@ elements.btnRefreshSources.addEventListener('click', () => {
 // Initialize
 connectWebSocket();
 loadAddresses();
+loadSources();
+
+// Poll status every 1 second
+setInterval(fetchAndUpdateStatus, 1000);
+fetchAndUpdateStatus(); // Fetch immediately on load
 
 // Cleanup on close
 window.addEventListener('beforeunload', () => {

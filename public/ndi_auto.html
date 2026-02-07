@@ -19,26 +19,24 @@
     }
     
     #video-container {
-      position: relative;
-      width: 100%;
-      max-width: 100vw;
-      max-height: 90vh;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
       display: flex;
       justify-content: center;
       align-items: center;
     }
     
     #video {
-      width: auto;
-      height: auto;
-      max-width: 100%;
-      max-height: 90vh;
-      border: 2px solid #333;
-      box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+      width: 100vw;
+      height: 100vh;
+      object-fit: contain;
     }
     
     #status {
-      position: absolute;
+      position: fixed;
       top: 20px;
       left: 20px;
       background: rgba(0,0,0,0.8);
@@ -49,7 +47,7 @@
     }
     
     #controls {
-      position: absolute;
+      position: fixed;
       top: 20px;
       right: 20px;
       background: rgba(0,0,0,0.8);

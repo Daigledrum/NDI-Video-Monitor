@@ -18,16 +18,19 @@
     }
     
     #container {
-      position: relative;
-      width: 100%;
-      max-width: 1920px;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
       display: flex;
       flex-direction: column;
       align-items: center;
+      justify-content: center;
     }
     
     #status {
-      position: absolute;
+      position: fixed;
       top: 10px;
       left: 10px;
       background: rgba(0,0,0,0.8);
@@ -38,7 +41,7 @@
     }
     
     #controls {
-      position: absolute;
+      position: fixed;
       top: 10px;
       right: 10px;
       background: rgba(0,0,0,0.9);
@@ -64,10 +67,10 @@
     }
     
     #video {
-      width: 100%;
-      height: auto;
+      width: 100vw;
+      height: 100vh;
       display: block;
-      border: 1px solid #333;
+      object-fit: contain;
     }
     
     .disconnected { color: #f00; }
@@ -130,6 +133,7 @@
       if (ws) ws.close();
       
       ws = new WebSocket(`ws://${window.location.host}`);
+      ws.binaryType = 'blob';
       
       ws.onopen = () => {
         statusEl.textContent = '● Connected';
@@ -138,7 +142,16 @@
       };
       
       ws.onmessage = (event) => {
-        videoEl.src = event.data;
+        if (typeof event.data === 'string') {
+          videoEl.src = event.data;
+          return;
+        }
+        const url = URL.createObjectURL(event.data);
+        const oldSrc = videoEl.src;
+        videoEl.src = url;
+        if (oldSrc && oldSrc.startsWith('blob:')) {
+          setTimeout(() => URL.revokeObjectURL(oldSrc), 100);
+        }
       };
       
       ws.onerror = (error) => {
