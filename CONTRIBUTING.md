@@ -5,8 +5,8 @@ Thank you for considering contributing to this project!
 ## Development Setup
 
 1. Follow the installation instructions in the README.md
-2. Make sure all prerequisites are installed (NDI SDK, FFmpeg, Node.js)
-3. Compile the C binaries before testing
+2. Make sure all prerequisites are installed (NDI SDK, Node.js)
+3. Compile the C binaries before testing (or run build.sh)
 
 ## How to Contribute
 
@@ -47,12 +47,14 @@ Thank you for considering contributing to this project!
 - Test stream switching functionality
 - Verify no memory leaks during long sessions
 - Check performance with high-resolution sources
+- Verify WebRTC playback in webrtc_viewer.html
+- Validate stats reporting (FPS/latency) from /api/stats
 
 ## Platform Support
 
-Currently focused on macOS. If porting to Linux/Windows:
+Cross-platform (macOS, Windows, Linux) support is included:
 - Document platform-specific changes
-- Update compilation instructions
+- Update compilation instructions if SDK paths differ
 - Update .gitignore for platform binaries
 
 ## Questions?
