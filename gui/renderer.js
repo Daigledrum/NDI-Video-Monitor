@@ -1,5 +1,5 @@
-let ws = null;
 let isConnected = false;
+let apiConnected = false;
 let logCount = 0;
 let pipelineRunning = false;
 let selectedSourceName = null;
@@ -18,54 +18,6 @@ const elements = {
     btnRefreshSources: document.getElementById('btn-refresh-sources'),
     btnClearLogs: document.getElementById('btn-clear-logs')
 };
-
-// Connect to WebSocket for logs
-async function connectWebSocket() {
-    try {
-        const serverUrl = await window.api.getServerUrl();
-        const wsUrl = `${serverUrl}`;
-        
-        ws = new WebSocket(wsUrl);
-
-        ws.onopen = () => {
-            isConnected = true;
-            updateConnectionStatus(true);
-            addLog('Connected to server ✓', 'success');
-        };
-
-        ws.onmessage = (event) => {
-            try {
-                // Skip binary/video data
-                if (event.data.length > 10000) return;
-                
-                const data = JSON.parse(event.data);
-                
-                if (data.type === 'log') {
-                    addLog(data.message, data.level || 'info');
-                } else if (data.type === 'status') {
-                    updateStatus(data);
-                }
-            } catch (err) {
-                // Binary data or non-JSON, ignore
-            }
-        };
-
-        ws.onerror = (error) => {
-            console.error('WebSocket error:', error);
-            updateConnectionStatus(false);
-        };
-
-        ws.onclose = () => {
-            isConnected = false;
-            updateConnectionStatus(false);
-            // Reconnect
-            setTimeout(connectWebSocket, 2000);
-        };
-    } catch (err) {
-        console.error('Failed to connect:', err);
-        setTimeout(connectWebSocket, 2000);
-    }
-}
 
 function updateConnectionStatus(connected) {
     if (connected) {
@@ -98,8 +50,14 @@ function updateStatus(data) {
 async function fetchAndUpdateStatus() {
     try {
         const stats = await window.api.apiCall('/api/stats');
+        apiConnected = true;
+        isConnected = apiConnected;
+        updateConnectionStatus(isConnected);
         updateStatus(stats);
     } catch (err) {
+        apiConnected = false;
+        isConnected = apiConnected;
+        updateConnectionStatus(isConnected);
         console.error('Failed to fetch status:', err);
     }
 }
@@ -281,17 +239,9 @@ elements.btnRefreshSources.addEventListener('click', () => {
 });
 
 // Initialize
-connectWebSocket();
 loadAddresses();
 loadSources();
 
 // Poll status every 1 second
 setInterval(fetchAndUpdateStatus, 1000);
 fetchAndUpdateStatus(); // Fetch immediately on load
-
-// Cleanup on close
-window.addEventListener('beforeunload', () => {
-    if (ws) {
-        ws.close();
-    }
-});
