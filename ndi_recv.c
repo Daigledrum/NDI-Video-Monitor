@@ -3,8 +3,56 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
+#include <stdint.h>
+#include <ctype.h>
+#if defined(_WIN32)
+#include <windows.h>
+#else
 #include <unistd.h>
-#include "/Library/NDI SDK for Apple/include/Processing.NDI.Lib.h"
+#endif
+#include <Processing.NDI.Lib.h>
+
+static void sleep_ms(int ms) {
+#if defined(_WIN32)
+    Sleep(ms);
+#else
+    usleep((useconds_t)ms * 1000);
+#endif
+}
+
+static bool contains_case_insensitive(const char* haystack, const char* needle) {
+    if (!haystack || !needle) return false;
+    size_t needle_len = strlen(needle);
+    if (needle_len == 0) return true;
+
+    for (const char* p = haystack; *p; p++) {
+        size_t i = 0;
+        while (i < needle_len && p[i] && tolower((unsigned char)p[i]) == tolower((unsigned char)needle[i])) {
+            i++;
+        }
+        if (i == needle_len) return true;
+    }
+
+    return false;
+}
+
+static inline bool fourcc_equals(NDIlib_FourCC_video_type_e fourcc, const char a, const char b, const char c, const char d) {
+    return ((char)((fourcc >> 0) & 0xFF) == a) &&
+           ((char)((fourcc >> 8) & 0xFF) == b) &&
+           ((char)((fourcc >> 16) & 0xFF) == c) &&
+           ((char)((fourcc >> 24) & 0xFF) == d);
+}
+
+static int bytes_per_pixel_from_fourcc(NDIlib_FourCC_video_type_e fourcc) {
+    if (fourcc_equals(fourcc, 'U', 'Y', 'V', 'Y')) return 2;
+    if (fourcc_equals(fourcc, 'B', 'G', 'R', 'A')) return 4;
+    if (fourcc_equals(fourcc, 'B', 'G', 'R', 'X')) return 4;
+    if (fourcc_equals(fourcc, 'R', 'G', 'B', 'A')) return 4;
+    if (fourcc_equals(fourcc, 'R', 'G', 'B', 'X')) return 4;
+    if (fourcc_equals(fourcc, 'A', 'R', 'G', 'B')) return 4;
+    if (fourcc_equals(fourcc, 'A', 'B', 'G', 'R')) return 4;
+    return 0;
+}
 
 int main(int argc, char* argv[]) {
     const char* source_name = "MAXNDIStream";
@@ -41,7 +89,7 @@ int main(int argc, char* argv[]) {
         for (uint32_t i = 0; i < num_sources; i++) {
             fprintf(stderr, "[ndi_recv]   - %s\n", sources[i].p_ndi_name);
             // Case-insensitive search
-            if (strcasestr(sources[i].p_ndi_name, source_name)) {
+            if (contains_case_insensitive(sources[i].p_ndi_name, source_name)) {
                 // Copy the source data since it may become invalid
                 found_source = sources[i];
                 source = &found_source;
@@ -50,7 +98,7 @@ int main(int argc, char* argv[]) {
         }
         if (source) break;
         fprintf(stderr, "[ndi_recv] Source not found yet, waiting...\n");
-        sleep(2);
+        sleep_ms(2000);
     }
 
     if (!source) {
@@ -92,13 +140,44 @@ int main(int argc, char* argv[]) {
                     (char)((video_frame.FourCC >> 24) & 0xFF));
                 first_frame = false;
             }
-            // UYVY is 2 bytes per pixel (4 bytes per 2 pixels)
-            size_t frame_size = (size_t)video_frame.xres * video_frame.yres * 2;
-            size_t written = fwrite(video_frame.p_data, 1, frame_size, stdout);
-            if (written != frame_size) {
-                fprintf(stderr, "[ndi_recv] pipe closed\n");
-                break;
+            int bytes_per_pixel = bytes_per_pixel_from_fourcc(video_frame.FourCC);
+            if (bytes_per_pixel == 0) {
+                fprintf(stderr, "[ndi_recv] Unsupported FourCC - skipping frame\n");
+                NDIlib_recv_free_video_v2(receiver, &video_frame);
+                continue;
             }
+
+            // Normalize to tightly-packed output regardless of source stride.
+            size_t row_bytes = (size_t)video_frame.xres * (size_t)bytes_per_pixel;
+            int stride = video_frame.line_stride_in_bytes;
+            size_t written = 0;
+
+            if (stride == (int)row_bytes) {
+                size_t frame_size = row_bytes * (size_t)video_frame.yres;
+                written = fwrite(video_frame.p_data, 1, frame_size, stdout);
+                if (written != frame_size) {
+                    fprintf(stderr, "[ndi_recv] pipe closed\n");
+                    NDIlib_recv_free_video_v2(receiver, &video_frame);
+                    break;
+                }
+            } else {
+                const uint8_t* row_ptr = video_frame.p_data;
+                for (int y = 0; y < video_frame.yres; y++) {
+                    size_t row_written = fwrite(row_ptr, 1, row_bytes, stdout);
+                    if (row_written != row_bytes) {
+                        fprintf(stderr, "[ndi_recv] pipe closed\n");
+                        written = 0;
+                        break;
+                    }
+                    row_ptr += stride;
+                    written += row_written;
+                }
+                if (written != row_bytes * (size_t)video_frame.yres) {
+                    NDIlib_recv_free_video_v2(receiver, &video_frame);
+                    break;
+                }
+            }
+
             NDIlib_recv_free_video_v2(receiver, &video_frame);
             frame_count++;
         } else if (frame_type == NDIlib_frame_type_none) {

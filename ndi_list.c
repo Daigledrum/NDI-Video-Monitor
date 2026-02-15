@@ -3,8 +3,46 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
-#include <unistd.h>
-#include "/Library/NDI SDK for Apple/include/Processing.NDI.Lib.h"
+#include <Processing.NDI.Lib.h>
+
+static void json_escape_and_print(const char* value) {
+    if (!value) return;
+
+    const unsigned char* p = (const unsigned char*)value;
+    while (*p) {
+        switch (*p) {
+            case '"':
+                fputs("\\\"", stdout);
+                break;
+            case '\\':
+                fputs("\\\\", stdout);
+                break;
+            case '\b':
+                fputs("\\b", stdout);
+                break;
+            case '\f':
+                fputs("\\f", stdout);
+                break;
+            case '\n':
+                fputs("\\n", stdout);
+                break;
+            case '\r':
+                fputs("\\r", stdout);
+                break;
+            case '\t':
+                fputs("\\t", stdout);
+                break;
+            default:
+                if (*p < 0x20) {
+                    fprintf(stdout, "\\u%04x", *p);
+                } else {
+                    fputc(*p, stdout);
+                }
+                break;
+        }
+        p++;
+    }
+}
 
 int main() {
     if (!NDIlib_initialize()) {
@@ -32,9 +70,13 @@ int main() {
     printf("{\"sources\":[");
     for (uint32_t i = 0; i < num_sources; i++) {
         if (i > 0) printf(",");
-        printf("{\"name\":\"%s\"", sources[i].p_ndi_name);
+        printf("{\"name\":\"");
+        json_escape_and_print(sources[i].p_ndi_name);
+        printf("\"");
         if (sources[i].p_url_address) {
-            printf(",\"url\":\"%s\"", sources[i].p_url_address);
+            printf(",\"url\":\"");
+            json_escape_and_print(sources[i].p_url_address);
+            printf("\"");
         }
         printf("}");
     }

@@ -6,7 +6,7 @@ Thank you for considering contributing to this project!
 
 1. Follow the installation instructions in the README.md
 2. Make sure all prerequisites are installed (NDI SDK, Node.js)
-3. Compile the C binaries before testing (or run build.sh)
+3. Native C binaries auto-compile on first run; you can also pre-compile manually if needed
 
 ## How to Contribute
 
@@ -28,7 +28,7 @@ Thank you for considering contributing to this project!
 1. Fork the repository
 2. Create a new branch (`git checkout -b feature/your-feature-name`)
 3. Make your changes
-4. Test thoroughly on macOS
+4. Test on at least one platform, and include cross-platform notes for any platform-specific behavior
 5. Update documentation if needed
 6. Commit your changes (`git commit -am 'Add some feature'`)
 7. Push to the branch (`git push origin feature/your-feature-name`)

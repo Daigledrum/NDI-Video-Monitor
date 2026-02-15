@@ -1,90 +1,100 @@
-# Quick Installation Guide for End Users
+# Installation Guide (macOS and Windows)
 
-## For Mac Users
+## macOS
 
 ### Prerequisites
-1. **Install NDI SDK:**
-   - Download from [ndi.tv](https://ndi.tv/download/)
-   - Run the installer (installs to `/Library/NDI SDK for Apple/`)
 
-2. **Install FFmpeg:**
+1. Install NDI SDK for Apple
+   - Download from https://ndi.tv/download/
+   - Default install path: `/Library/NDI SDK for Apple`
+2. Install Node.js 18+
+   - https://nodejs.org/ or Homebrew
+3. Ensure Xcode Command Line Tools are present
    ```bash
-   brew install ffmpeg
+   xcode-select --install
    ```
-   If you don't have Homebrew, install it from [brew.sh](https://brew.sh)
 
-### Installation
-1. Download `NDI Server Control.dmg`
-2. Open the DMG file
-3. Drag "NDI Server Control" to your Applications folder
-4. Launch from Applications
+### Setup
+
+```bash
+git clone <your-repo-url>
+cd ndi-video-monitor
+npm install
+npm run preflight
+npm start
+```
+
+If port `3001` is already in use:
+```bash
+PORT=3002 npm start
+```
 
 ---
 
-## For Windows Users
+## Windows
 
 ### Prerequisites
-1. **Install NDI SDK:**
-   - Download from [ndi.tv](https://ndi.tv/download/)
-   - Run the installer (default: `C:\Program Files\NDI\NDI 5 SDK\`)
 
-2. **Install FFmpeg:**
-   - Using Chocolatey: `choco install ffmpeg`
-   - Or download from [ffmpeg.org](https://ffmpeg.org/download.html) and add to PATH
+1. Install NDI SDK
+   - Preferred: NDI 6 SDK
+   - Fallback supported: NDI 5 SDK
+   - Typical paths:
+     - `C:\Program Files\NDI\NDI 6 SDK`
+     - `C:\Program Files\NDI\NDI 5 SDK`
+2. Install Node.js 18+
+   - https://nodejs.org/
+3. Install Visual C++ Build Tools
+   - Required if native helpers compile from source
 
-### Installation
-1. Download `NDI Server Control Setup.exe`
-2. Run the installer
-3. Follow the installation wizard
-4. Launch from Start Menu or Desktop shortcut
+### Setup
 
----
+Open PowerShell or Command Prompt:
 
-## Using the Application
+```cmd
+git clone <your-repo-url>
+cd ndi-video-monitor
+npm install
+npm run preflight
+npm start
+```
 
-1. **Launch the app** - The server starts automatically
-2. **View network addresses** - Look at the bottom of the app window
-3. **Scan QR code** - Use your phone/tablet camera to connect instantly
-4. **Or manually enter URL** - Open the displayed URL on your device's browser
-
-### Connecting Devices
-
-**Quick Connect (Recommended):**
-- Scan the QR code with your phone/tablet camera
-- Browser opens automatically to the viewer
-
-**Manual Connect:**
-- On your iPad/Phone, open Safari/Chrome
-- Enter the URL shown in the app (e.g., `http://192.168.1.100:3001/webrtc_viewer.html`)
-
-### Controls
-
-- **Start/Stop** - Control the NDI stream
-- **Source Selection** - Choose which NDI source to monitor
-- **Switch** - Change sources on the fly
+If port `3001` is already in use:
+```cmd
+set PORT=3002&& npm start
+```
 
 ---
 
-## Troubleshooting
+## Verify Installation
 
-**"No NDI sources found"**
-- Make sure your NDI source is running on the network
-- Check firewall settings (allow port 5960-5961 for NDI)
-
-**"Connection failed"**
-- Ensure all devices are on the same network
-- Try disabling firewall temporarily
-- Check that port 3001 is not blocked
-
-**"WebRTC not supported"**
-- Update your browser (Chrome/Safari recommended)
-- iOS requires Safari (WebRTC built-in)
+You should see logs similar to:
+- `[CONFIG] Platform: ...`
+- `[CONFIG] NDI SDK: ...`
+- `[CONFIG] NDI Version: ...`
+- `[SERVER] Listening on http://localhost:<port>`
 
 ---
 
-## System Requirements
+## Common Issues
 
-- **Mac:** macOS 10.13 or later
-- **Windows:** Windows 10 (Build 1909) or later
-- **Network:** WiFi or Ethernet (no internet required)
-- **Client Devices:** Any device with modern web browser
+### "No NDI sources found"
+- Confirm an NDI source is actively broadcasting.
+- Ensure sender and receiver are on the same network.
+
+### "Failed to compile native binary"
+- macOS/Linux: install gcc/clang toolchain.
+- Windows: install Visual C++ Build Tools and run from Developer Command Prompt.
+
+### "Port already in use"
+- Run on a different port using `PORT` env var as shown above.
+
+---
+
+## Pre-release Checks
+
+Before publishing or tagging a release:
+
+```bash
+npm run preflight
+npm run security:check
+```

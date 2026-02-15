@@ -3,6 +3,8 @@ const http = require('http');
 const { spawn } = require('child_process');
 const { execSync } = require('child_process');
 const os = require('os');
+const fs = require('fs');
+const path = require('path');
 const { PassThrough } = require('stream');
 
 let wrtc = null;
@@ -23,10 +25,8 @@ function convertUYVY422toI420(uyvyBuffer, width, height) {
     const uvSize = (width * height) / 4;
     const i420Buffer = Buffer.allocUnsafe(ySize + uvSize * 2);
     
-    let yIdx = 0;
     let uIdx = ySize;
     let vIdx = ySize + uvSize;
-    let src = 0;
     let srcLine = 0;
     
     // Process 2x2 pixel blocks  
@@ -67,8 +67,107 @@ function convertUYVY422toI420(uyvyBuffer, width, height) {
     return i420Buffer;
 }
 
+function clampByte(value) {
+    if (value < 0) return 0;
+    if (value > 255) return 255;
+    return value;
+}
+
+function convertPackedRGBtoI420(rgbaBuffer, width, height, pixelFormat) {
+    const ySize = width * height;
+    const uvSize = (width * height) / 4;
+    const i420Buffer = Buffer.allocUnsafe(ySize + uvSize * 2);
+
+    let rOffset = 0;
+    let gOffset = 1;
+    let bOffset = 2;
+
+    switch (pixelFormat) {
+        case 'ARGB':
+            rOffset = 1;
+            gOffset = 2;
+            bOffset = 3;
+            break;
+        case 'BGRA':
+            rOffset = 2;
+            gOffset = 1;
+            bOffset = 0;
+            break;
+        case 'ABGR':
+            rOffset = 3;
+            gOffset = 2;
+            bOffset = 1;
+            break;
+        case 'RGBA':
+        default:
+            rOffset = 0;
+            gOffset = 1;
+            bOffset = 2;
+            break;
+    }
+
+    // Y plane
+    for (let y = 0; y < height; y++) {
+        const rowStart = y * width * 4;
+        const yRowStart = y * width;
+        for (let x = 0; x < width; x++) {
+            const idx = rowStart + x * 4;
+            const r = rgbaBuffer[idx + rOffset];
+            const g = rgbaBuffer[idx + gOffset];
+            const b = rgbaBuffer[idx + bOffset];
+
+            const yVal = ((66 * r + 129 * g + 25 * b + 128) >> 8) + 16;
+            i420Buffer[yRowStart + x] = clampByte(yVal);
+        }
+    }
+
+    // U and V planes (2x2 subsampling)
+    const uStart = ySize;
+    const vStart = ySize + uvSize;
+    for (let y = 0; y < height; y += 2) {
+        for (let x = 0; x < width; x += 2) {
+            let rSum = 0;
+            let gSum = 0;
+            let bSum = 0;
+            let samples = 0;
+
+            for (let dy = 0; dy < 2; dy++) {
+                for (let dx = 0; dx < 2; dx++) {
+                    const px = x + dx;
+                    const py = y + dy;
+                    if (px >= width || py >= height) continue;
+
+                    const idx = (py * width + px) * 4;
+                    rSum += rgbaBuffer[idx + rOffset];
+                    gSum += rgbaBuffer[idx + gOffset];
+                    bSum += rgbaBuffer[idx + bOffset];
+                    samples++;
+                }
+            }
+
+            if (samples === 0) continue;
+
+            const rAvg = Math.round(rSum / samples);
+            const gAvg = Math.round(gSum / samples);
+            const bAvg = Math.round(bSum / samples);
+
+            const uVal = ((-38 * rAvg - 74 * gAvg + 112 * bAvg + 128) >> 8) + 128;
+            const vVal = ((112 * rAvg - 94 * gAvg - 18 * bAvg + 128) >> 8) + 128;
+
+            const uvIndex = (y / 2) * (width / 2) + (x / 2);
+            i420Buffer[uStart + uvIndex] = clampByte(uVal);
+            i420Buffer[vStart + uvIndex] = clampByte(vVal);
+        }
+    }
+
+    return i420Buffer;
+}
+
 // ─── CONFIG ────────────────────────────────────────────────────────────────
-const HTTP_PORT = 3001;
+const parsedPort = Number.parseInt(process.env.PORT || '', 10);
+const HTTP_PORT = Number.isInteger(parsedPort) && parsedPort > 0 && parsedPort < 65536
+    ? parsedPort
+    : 3001;
 let NDI_SOURCE_NAME = null; // Will be auto-discovered
 
 // ─── PLATFORM DETECTION ────────────────────────────────────────────────────
@@ -82,37 +181,122 @@ let NDI_LIB_PATH = '';
 let NDI_INCLUDE_PATH = '';
 let NDI_LIST_CMD = isWindows ? '.\\ndi_list.exe' : './ndi_list';
 let NDI_RECV_CMD = isWindows ? '.\\ndi_recv.exe' : './ndi_recv';
-let NDI_RECV_COMPILED = isWindows ? 'ndi_recv.exe' : 'ndi_recv';
 
-if (isWindows) {
-    NDI_SDK_PATH = 'C:\\Program Files\\NDI\\NDI 5 SDK';
-    NDI_LIB_PATH = NDI_SDK_PATH + '\\lib\\x64';
-    NDI_INCLUDE_PATH = NDI_SDK_PATH + '\\include';
-} else if (isMac) {
-    NDI_SDK_PATH = '/Library/NDI SDK for Apple';
-    NDI_LIB_PATH = NDI_SDK_PATH + '/lib/macOS';
-    NDI_INCLUDE_PATH = NDI_SDK_PATH + '/include';
-} else if (isLinux) {
-    NDI_SDK_PATH = '/opt/ndi';
-    NDI_LIB_PATH = NDI_SDK_PATH + '/lib/x86_64-linux-gnu';
-    NDI_INCLUDE_PATH = NDI_SDK_PATH + '/include';
+function selectNDISdkPaths() {
+    const candidates = [];
+
+    if (isWindows) {
+        candidates.push({
+            sdk: 'C:\\Program Files\\NDI\\NDI 6 SDK',
+            lib: 'C:\\Program Files\\NDI\\NDI 6 SDK\\lib\\x64',
+            include: 'C:\\Program Files\\NDI\\NDI 6 SDK\\include'
+        });
+        candidates.push({
+            sdk: 'C:\\Program Files\\NDI\\NDI 5 SDK',
+            lib: 'C:\\Program Files\\NDI\\NDI 5 SDK\\lib\\x64',
+            include: 'C:\\Program Files\\NDI\\NDI 5 SDK\\include'
+        });
+    } else if (isMac) {
+        candidates.push({
+            sdk: '/Library/NDI SDK for Apple',
+            lib: '/Library/NDI SDK for Apple/lib/macOS',
+            include: '/Library/NDI SDK for Apple/include'
+        });
+    } else if (isLinux) {
+        candidates.push({
+            sdk: '/opt/ndi',
+            lib: '/opt/ndi/lib/x86_64-linux-gnu',
+            include: '/opt/ndi/include'
+        });
+    }
+
+    const selected = candidates.find((candidate) => {
+        return fs.existsSync(candidate.include) && fs.existsSync(candidate.lib);
+    });
+
+    if (selected) {
+        return selected;
+    }
+
+    return candidates[0] || { sdk: '', lib: '', include: '' };
 }
+
+const selectedNDISdk = selectNDISdkPaths();
+NDI_SDK_PATH = selectedNDISdk.sdk;
+NDI_LIB_PATH = selectedNDISdk.lib;
+NDI_INCLUDE_PATH = selectedNDISdk.include;
 
 console.log(`[CONFIG] Platform: ${process.platform}`);
 console.log(`[CONFIG] NDI SDK: ${NDI_SDK_PATH}`);
+console.log(`[CONFIG] NDI Include: ${NDI_INCLUDE_PATH}`);
+console.log(`[CONFIG] NDI Lib: ${NDI_LIB_PATH}`);
 
-// ─── VERIFY DEPENDENCIES ───────────────────────────────────────────────────
 try {
-    execSync('ffmpeg -version', { stdio: 'ignore' });
-    console.log('[OK] ffmpeg found');
-} catch {
-    const installCmd = isWindows 
-        ? 'choco install ffmpeg' 
-        : isMac 
-        ? 'brew install ffmpeg' 
-        : 'sudo apt-get install ffmpeg';
-    console.error(`[FATAL] ffmpeg not installed. Install: ${installCmd}`);
-    process.exit(1);
+    const ndiVersionPath = path.join(NDI_SDK_PATH, 'Version.txt');
+    if (NDI_SDK_PATH && fs.existsSync(ndiVersionPath)) {
+        const sdkVersion = fs.readFileSync(ndiVersionPath, 'utf8').trim();
+        console.log(`[CONFIG] NDI Version: ${sdkVersion}`);
+    }
+} catch (err) {
+    console.warn('[WARN] Unable to read NDI Version.txt:', err.message);
+}
+
+if (!NDI_INCLUDE_PATH || !NDI_LIB_PATH || !fs.existsSync(NDI_INCLUDE_PATH) || !fs.existsSync(NDI_LIB_PATH)) {
+    console.warn('[WARN] NDI SDK paths were not verified on disk. Install NDI SDK (preferably NDI 6) or update path detection.');
+}
+
+function getCompileCommand(binaryBaseName) {
+    if (binaryBaseName !== 'ndi_recv' && binaryBaseName !== 'ndi_list') {
+        throw new Error(`Unsupported native binary: ${binaryBaseName}`);
+    }
+
+    if (isWindows) {
+        return `cl /nologo /O2 /Fe:${binaryBaseName}.exe ${binaryBaseName}.c /I"${NDI_INCLUDE_PATH}" /link /LIBPATH:"${NDI_LIB_PATH}" Processing.NDI.Lib.x64.lib`;
+    }
+
+    if (isMac || isLinux) {
+        return `gcc -O3 -o ${binaryBaseName} ${binaryBaseName}.c -L"${NDI_LIB_PATH}" -lndi -I"${NDI_INCLUDE_PATH}" -Wl,-rpath,"${NDI_LIB_PATH}"`;
+    }
+
+    throw new Error(`Unsupported platform: ${process.platform}`);
+}
+
+function ensureNativeBinary(binaryBaseName) {
+    const compiledName = isWindows ? `${binaryBaseName}.exe` : binaryBaseName;
+    const binaryPath = path.join(__dirname, compiledName);
+    const sourcePath = path.join(__dirname, `${binaryBaseName}.c`);
+
+    let needsCompile = true;
+    if (fs.existsSync(binaryPath)) {
+        try {
+            const binStat = fs.statSync(binaryPath);
+            const srcStat = fs.statSync(sourcePath);
+            needsCompile = srcStat.mtimeMs > binStat.mtimeMs;
+        } catch (err) {
+            needsCompile = true;
+        }
+    }
+
+    if (!needsCompile) {
+        console.log(`[NDI] Using existing ${binaryBaseName} binary (up to date)`);
+        return;
+    }
+
+    const compileCmd = getCompileCommand(binaryBaseName);
+    execSync(compileCmd, {
+        cwd: __dirname,
+        stdio: 'pipe'
+    });
+    console.log(`[NDI] Compiled ${binaryBaseName}`);
+}
+
+function normalizeSourceName(value) {
+    if (typeof value !== 'string') return null;
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    const sanitized = trimmed.replace(/[\x00-\x1F\x7F]/g, '');
+    if (!sanitized || sanitized.length > 256) return null;
+    return sanitized;
 }
 
 // ─── EXPRESS SETUP ─────────────────────────────────────────────────────────
@@ -124,8 +308,8 @@ app.use(express.static('public'));
 
 // ─── API ENDPOINTS ─────────────────────────────────────────────────────────
 app.get('/api/sources', (req, res) => {
-    const { execSync } = require('child_process');
     try {
+        ensureNativeBinary('ndi_list');
         const output = execSync(NDI_LIST_CMD, { 
             cwd: __dirname,
             encoding: 'utf8',
@@ -146,7 +330,11 @@ app.get('/api/sources', (req, res) => {
 app.post('/api/start', (req, res) => {
     console.log('[API] Start request');
     if (req.body && req.body.source) {
-        NDI_SOURCE_NAME = req.body.source;
+        const sourceName = normalizeSourceName(req.body.source);
+        if (!sourceName) {
+            return res.status(400).json({ error: 'Invalid source name' });
+        }
+        NDI_SOURCE_NAME = sourceName;
         console.log(`[API] Source set to: ${NDI_SOURCE_NAME}`);
     }
     if (ndiProc && !ndiProc.killed) {
@@ -170,7 +358,10 @@ app.post('/api/switch', (req, res) => {
     if (!req.body || !req.body.source) {
         return res.status(400).json({ error: 'No source specified' });
     }
-    const newSource = req.body.source;
+    const newSource = normalizeSourceName(req.body.source);
+    if (!newSource) {
+        return res.status(400).json({ error: 'Invalid source name' });
+    }
     console.log(`[API] Switching to source: ${newSource}`);
     switchNDISource(newSource);
     res.json({ status: 'switching', source: newSource });
@@ -253,10 +444,8 @@ let rtcWidth = null;
 let rtcHeight = null;
 let rtcPipelineRunning = false;
 const rtcPeers = new Set();
-const RTC_TARGET_FPS = 15;
-const RTC_TARGET_WIDTH = 1280;
-const RTC_TARGET_HEIGHT = 720;
 let rtcPendingStart = false;
+let detectedPixelFormat = 'UYVY';
 
 // ─── STATS TRACKING ────────────────────────────────────────────────────────
 let frameCount = 0;
@@ -277,8 +466,8 @@ function startWebRTCPipeline(resolution) {
     rtcHeight = resolution.height;
     rtcPipelineRunning = true;
 
-    console.log(`[WEBRTC] Starting direct UYVY422 pipeline (${rtcWidth}x${rtcHeight})`);
-    console.log(`[WEBRTC] Skipping ffmpeg - using native JS conversion`);
+    console.log(`[WEBRTC] Starting direct ${detectedPixelFormat} pipeline (${rtcWidth}x${rtcHeight})`);
+    console.log('[WEBRTC] Using native JS conversion pipeline');
 
     // Set up direct streaming from NDI - use the existing tee if available
     const sourceStream = ndiVideoTee || ndiProc.stdout;
@@ -286,7 +475,7 @@ function startWebRTCPipeline(resolution) {
     // Only set up listener if we have a source
     if (sourceStream) {
         sourceStream.on('data', (chunk) => {
-            processUYVYFrame(chunk, rtcWidth, rtcHeight);
+            processNDIFrame(chunk, rtcWidth, rtcHeight, detectedPixelFormat);
         });
         
         sourceStream.on('error', (err) => {
@@ -296,22 +485,32 @@ function startWebRTCPipeline(resolution) {
     }
 }
 
-function processUYVYFrame(chunk, width, height) {
+function processNDIFrame(chunk, width, height, pixelFormat) {
     rtcFrameBuffer = Buffer.concat([rtcFrameBuffer, chunk]);
-    
-    const uyvyFrameSize = width * height * 2;
-    
-    while (rtcFrameBuffer.length >= uyvyFrameSize) {
+
+    const normalizedFormat = (pixelFormat || 'UYVY').toUpperCase();
+    const bytesPerPixel = normalizedFormat === 'UYVY' ? 2 : 4;
+    const frameSize = width * height * bytesPerPixel;
+
+    while (rtcFrameBuffer.length >= frameSize) {
         const frameStartTime = Date.now();
-        
-        // Extract one complete UYVY frame
-        const uyvyFrame = rtcFrameBuffer.subarray(0, uyvyFrameSize);
-        rtcFrameBuffer = rtcFrameBuffer.subarray(uyvyFrameSize);
+
+        // Extract one complete frame for the detected pixel format
+        const rawFrame = rtcFrameBuffer.subarray(0, frameSize);
+        rtcFrameBuffer = rtcFrameBuffer.subarray(frameSize);
         
         if (rtcVideoSource && rtcVideoTrack) {
             try {
-                // Convert UYVY422 to I420 in-place
-                const i420Frame = convertUYVY422toI420(uyvyFrame, width, height);
+                let i420Frame;
+
+                if (normalizedFormat === 'UYVY') {
+                    i420Frame = convertUYVY422toI420(rawFrame, width, height);
+                } else if (normalizedFormat === 'ARGB' || normalizedFormat === 'BGRA' || normalizedFormat === 'RGBA' || normalizedFormat === 'ABGR') {
+                    i420Frame = convertPackedRGBtoI420(rawFrame, width, height, normalizedFormat);
+                } else {
+                    console.warn(`[WEBRTC] Unsupported format ${normalizedFormat}, defaulting to UYVY decode`);
+                    i420Frame = convertUYVY422toI420(rawFrame, width, height);
+                }
                 
                 rtcVideoSource.onFrame({
                     width: width,
@@ -438,28 +637,12 @@ function startPipeline() {
 
     // Step 1: Compile ndi_recv if needed
     try {
-        let compileCmd = '';
-        if (isWindows) {
-            // Windows: cl.exe (MSVC) - adjust path if needed
-            compileCmd = `cl /Fe:ndi_recv.exe ndi_recv.c /I"${NDI_INCLUDE_PATH}" /link /LIBPATH:"${NDI_LIB_PATH}" Processing.NDI.Lib.h`;
-        } else if (isMac) {
-            // macOS with gcc/clang
-            compileCmd = `gcc -o ndi_recv ndi_recv.c -L"${NDI_LIB_PATH}" -lndi -I"${NDI_INCLUDE_PATH}" -Wl,-rpath,"${NDI_LIB_PATH}"`;
-        } else if (isLinux) {
-            // Linux with gcc
-            compileCmd = `gcc -o ndi_recv ndi_recv.c -L"${NDI_LIB_PATH}" -lndi -I"${NDI_INCLUDE_PATH}" -Wl,-rpath,"${NDI_LIB_PATH}"`;
-        }
-        
-        execSync(compileCmd, { 
-            cwd: __dirname,
-            stdio: 'pipe' 
-        });
-        console.log('[NDI] Compiled ndi_recv');
+        ensureNativeBinary('ndi_recv');
     } catch (err) {
         console.log('[NDI] Using existing ndi_recv binary:', err.message);
     }
 
-    // Step 2: Start NDI receiver (outputs UYVY422 raw video)
+    // Step 2: Start NDI receiver (outputs raw video in detected NDI format)
     ndiProc = spawn(NDI_RECV_CMD, [NDI_SOURCE_NAME], {
         cwd: __dirname,
         stdio: ['ignore', 'pipe', 'pipe']  // stderr to capture resolution
@@ -468,12 +651,11 @@ function startPipeline() {
     console.log('[NDI] Started ndi_recv');
 
     let resolutionDetected = false;
-    let ndiConnected = false;
     const maxWaitTime = 5000; // 5 second timeout
-    const startTime = Date.now();
 
     // Reset detected resolution for new pipeline
     detectedResolution = null;
+    detectedPixelFormat = 'UYVY';
 
     // Handle stderr to detect resolution
     // Tee NDI stdout for multiple consumers
@@ -486,10 +668,23 @@ function startPipeline() {
         
         // Check for connection success
         if (text.includes('Connected to:')) {
-            ndiConnected = true;
             console.log('[NDI] Connected to source');
         }
         
+        const fourccMatch = text.match(/fourcc=([A-Za-z0-9]{4})/);
+        if (fourccMatch) {
+            const parsedFormat = fourccMatch[1].toUpperCase();
+            if (parsedFormat === 'UYVY' || parsedFormat === 'ARGB' || parsedFormat === 'BGRA' || parsedFormat === 'RGBA' || parsedFormat === 'ABGR') {
+                if (detectedPixelFormat !== parsedFormat) {
+                    detectedPixelFormat = parsedFormat;
+                    console.log(`[NDI] Detected pixel format: ${detectedPixelFormat}`);
+                }
+            } else {
+                console.warn(`[NDI] Unsupported fourcc '${parsedFormat}', falling back to UYVY handling`);
+                detectedPixelFormat = 'UYVY';
+            }
+        }
+
         // Parse VIDEO resolution from stderr: [ndi_recv] VIDEO 1920x1080 fps=30.00
         const match = text.match(/VIDEO (\d+)x(\d+)/);
         if (match && !resolutionDetected) {
@@ -565,6 +760,7 @@ function cleanup() {
     ndiProc = null;
     ndiVideoTee = null;
     detectedResolution = null;
+    detectedPixelFormat = 'UYVY';
     rtcPipelineRunning = false;
     
     console.log('[CLEANUP] Done');
@@ -598,6 +794,7 @@ server.listen(HTTP_PORT, '0.0.0.0', () => {
     
     // Auto-discover sources (but don't start pipeline yet)
     try {
+        ensureNativeBinary('ndi_list');
         const output = execSync(NDI_LIST_CMD, { 
             cwd: __dirname,
             encoding: 'utf8',

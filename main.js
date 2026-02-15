@@ -1,17 +1,15 @@
 const { app, BrowserWindow, ipcMain, Menu } = require('electron');
 const path = require('path');
-const { spawn, execSync } = require('child_process');
-const os = require('os');
+const { spawn } = require('child_process');
 const fs = require('fs');
 
 let mainWindow;
 let serverProcess;
-let pipelineRunning = false;
-let ndiProcess;
-let ffmpegProcess;
-let currentSource = null;
 
-const SERVER_PORT = 3001;
+const parsedPort = Number.parseInt(process.env.PORT || '', 10);
+const SERVER_PORT = Number.isInteger(parsedPort) && parsedPort > 0 && parsedPort < 65536
+    ? parsedPort
+    : 3001;
 
 // Platform detection
 const isWindows = process.platform === 'win32';

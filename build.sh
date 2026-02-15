@@ -16,7 +16,11 @@ if [[ "$OSTYPE" == "darwin"* ]]; then
     BINARY_EXTENSION=""
 elif [[ "$OSTYPE" == "msys" || "$OSTYPE" == "win32" ]]; then
     PLATFORM="win"
+  if [ -d "C:/Program Files/NDI/NDI 6 SDK" ]; then
+    NDI_SDK_PATH="C:/Program Files/NDI/NDI 6 SDK"
+  else
     NDI_SDK_PATH="C:/Program Files/NDI/NDI 5 SDK"
+  fi
     NDI_LIB_PATH="$NDI_SDK_PATH/lib/x64"
     NDI_INCLUDE_PATH="$NDI_SDK_PATH/include"
     BINARY_EXTENSION=".exe"
@@ -29,6 +33,7 @@ else
 fi
 
 echo "📍 Platform detected: $PLATFORM"
+echo "📍 NDI SDK path: $NDI_SDK_PATH"
 echo ""
 
 # Step 1: Compile NDI binaries

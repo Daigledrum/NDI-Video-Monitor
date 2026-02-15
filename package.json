@@ -11,7 +11,9 @@
     "build-mac": "electron-builder --mac",
     "build-win": "electron-builder --win",
     "build-all": "electron-builder --mac --win",
-    "server": "node ndi_server.js"
+    "server": "node ndi_server.js",
+    "preflight": "node scripts/preflight.js",
+    "security:check": "npm audit --omit=dev --audit-level=high"
   },
   "dependencies": {
     "@koush/wrtc": "^0.5.3",
@@ -24,6 +26,9 @@
   "devDependencies": {
     "electron": "^40.1.0",
     "electron-builder": "^26.7.0"
+  },
+  "overrides": {
+    "@mapbox/node-pre-gyp": "2.0.3"
   },
   "build": {
     "appId": "com.ndi.control",
