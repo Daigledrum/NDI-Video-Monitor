@@ -2,6 +2,7 @@ let ws = null;
 let isConnected = false;
 let logCount = 0;
 let pipelineRunning = false;
+let selectedSourceName = null;
 
 const elements = {
     connectionDot: document.getElementById('connection-dot'),
@@ -130,6 +131,8 @@ function addLog(message, level = 'info') {
 
 async function loadSources() {
     try {
+        const previousSelection = selectedSourceName || elements.sourceSelect.value;
+
         console.log('Loading sources...');
         const data = await window.api.apiCall('/api/sources');
         
@@ -147,17 +150,26 @@ async function loadSources() {
                 option.textContent = source.name;
                 elements.sourceSelect.appendChild(option);
             });
+
+            const hasPreviousSelection = data.sources.some(source => source.name === previousSelection);
+            const fallbackSelection = data.sources[0].name;
+            selectedSourceName = hasPreviousSelection ? previousSelection : fallbackSelection;
+            elements.sourceSelect.value = selectedSourceName;
         } else {
             const option = document.createElement('option');
+            option.value = '';
             option.textContent = 'No sources available';
             elements.sourceSelect.appendChild(option);
             addLog('No NDI sources detected', 'warning');
+            selectedSourceName = null;
         }
     } catch (err) {
         console.error('Failed to load sources:', err);
         const option = document.createElement('option');
+        option.value = '';
         option.textContent = 'Error loading sources';
         elements.sourceSelect.appendChild(option);
+        selectedSourceName = null;
     }
 }
 
@@ -238,7 +250,7 @@ elements.btnStop.addEventListener('click', async () => {
 
 elements.btnSwitch.addEventListener('click', async () => {
     try {
-        const source = elements.sourceSelect.value;
+        const source = elements.sourceSelect.value || selectedSourceName;
         if (!source || source === 'Loading...' || source === 'No sources available' || source === 'Error loading sources') {
             addLog('Please select a valid source', 'error');
             return;
@@ -250,6 +262,11 @@ elements.btnSwitch.addEventListener('click', async () => {
     } catch (err) {
         addLog(`Failed to switch source: ${err.message}`, 'error');
     }
+});
+
+elements.sourceSelect.addEventListener('change', () => {
+    const source = elements.sourceSelect.value;
+    selectedSourceName = source || null;
 });
 
 elements.btnClearLogs.addEventListener('click', () => {
