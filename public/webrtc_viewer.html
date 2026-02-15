@@ -168,30 +168,9 @@
       setStatus('Connecting...');
 
       try {
-        let selectedSource = null;
-        try {
-          console.log('[CONNECT] Fetching sources...');
-          const sourcesResponse = await fetch('/api/sources');
-          const sourcesData = await sourcesResponse.json();
-          console.log('[CONNECT] Sources:', sourcesData);
-          if (sourcesData && sourcesData.sources && sourcesData.sources.length > 0) {
-            selectedSource = sourcesData.sources[0].name;
-            console.log('[CONNECT] Selected source:', selectedSource);
-          }
-        } catch (e) {
-          console.error('[CONNECT] Error fetching sources:', e);
-        }
-
-        console.log('[CONNECT] Starting stream...');
-        if (selectedSource) {
-          await fetch('/api/start', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ source: selectedSource })
-          });
-        } else {
-          await fetch('/api/start', { method: 'POST' });
-        }
+        console.log('[CONNECT] Ensuring stream is running...');
+        // Do not override source here. Keep whatever source is currently selected server-side.
+        await fetch('/api/start', { method: 'POST' });
       } catch (e) {
         console.error('[CONNECT] Error starting stream:', e);
       }
